@@ -148,6 +148,28 @@ func GetLogsSelfStat(c *gin.Context) {
 	return
 }
 
+func GetUserUsageRanking(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	modelName := c.Query("model_name")
+	tokenName := c.Query("token_name")
+	channel, _ := strconv.Atoi(c.Query("channel"))
+	group := c.Query("group")
+	username := c.Query("username")
+	sortBy := c.Query("sort_by")
+	sortOrder := c.Query("sort_order")
+
+	items, total, err := model.GetUserUsageRanking(startTimestamp, endTimestamp, modelName, tokenName, channel, group, username, sortBy, sortOrder, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func DeleteHistoryLogs(c *gin.Context) {
 	targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
 	if targetTimestamp == 0 {

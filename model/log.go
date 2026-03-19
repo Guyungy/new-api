@@ -379,6 +379,71 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+type UserUsageStat struct {
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	Quota       int64  `json:"quota"`
+	Tokens      int64  `json:"tokens"`
+	RequestCount int64 `json:"request_count"`
+}
+
+func GetUserUsageRanking(startTimestamp int64, endTimestamp int64, modelName string, tokenName string, channel int, group string, username string, sortBy string, sortOrder string, startIdx int, num int) (items []*UserUsageStat, total int64, err error) {
+	tx := LOG_DB.Table("logs").Where("type = ?", LogTypeConsume)
+
+	if username != "" {
+		tx = tx.Where("username = ?", username)
+	}
+	if tokenName != "" {
+		tx = tx.Where("token_name = ?", tokenName)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if modelName != "" {
+		modelNamePattern, err := sanitizeLikePattern(modelName)
+		if err != nil {
+			return nil, 0, err
+		}
+		tx = tx.Where("model_name LIKE ? ESCAPE '!'", modelNamePattern)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
+	}
+	if group != "" {
+		tx = tx.Where(logGroupCol+" = ?", group)
+	}
+
+	if err = tx.Distinct("user_id").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	orderBy := "quota"
+	switch sortBy {
+	case "tokens":
+		orderBy = "tokens"
+	case "request_count":
+		orderBy = "request_count"
+	}
+	if sortOrder != "asc" {
+		sortOrder = "desc"
+	}
+
+	err = tx.Select("user_id, username, SUM(quota) AS quota, SUM(prompt_tokens + completion_tokens) AS tokens, COUNT(*) AS request_count").
+		Group("user_id, username").
+		Order(orderBy + " " + sortOrder).
+		Limit(num).
+		Offset(startIdx).
+		Find(&items).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return items, total, nil
+}
+
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
