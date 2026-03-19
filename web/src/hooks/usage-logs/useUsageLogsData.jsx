@@ -43,6 +43,10 @@ import ParamOverrideEntry from '../../components/table/usage-logs/components/Par
 
 export const useLogsData = () => {
   const { t } = useTranslation();
+  const VIEW_MODE = {
+    LOGS: 'logs',
+    USER_RANKING: 'user_ranking',
+  };
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -72,6 +76,8 @@ export const useLogsData = () => {
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [logType, setLogType] = useState(0);
+  const [viewMode, setViewMode] = useState(VIEW_MODE.LOGS);
+  const [userRanking, setUserRanking] = useState([]);
 
   // User and admin
   const isAdminUser = isAdmin();
@@ -93,6 +99,9 @@ export const useLogsData = () => {
   const [formApi, setFormApi] = useState(null);
   let now = new Date();
   const formInitValues = {
+    viewMode: VIEW_MODE.LOGS,
+    sort_by: 'quota',
+    sort_order: 'desc',
     username: '',
     token_name: '',
     model_name: '',
@@ -256,6 +265,9 @@ export const useLogsData = () => {
       group: formValues.group || '',
       request_id: formValues.request_id || '',
       logType: formValues.logType ? parseInt(formValues.logType) : 0,
+      viewMode: formValues.viewMode || VIEW_MODE.LOGS,
+      sort_by: formValues.sort_by || 'quota',
+      sort_order: formValues.sort_order || 'desc',
     };
   };
 
@@ -729,6 +741,7 @@ export const useLogsData = () => {
       setActivePage(data.page);
       setPageSize(data.page_size);
       setLogCount(data.total);
+      setUserRanking([]);
 
       setLogsFormat(newPageData);
     } else {
@@ -737,17 +750,67 @@ export const useLogsData = () => {
     setLoading(false);
   };
 
+  const loadUserRanking = async (startIdx, pageSize) => {
+    setLoading(true);
+    const {
+      username,
+      token_name,
+      model_name,
+      start_timestamp,
+      end_timestamp,
+      channel,
+      group,
+      sort_by,
+      sort_order,
+    } = getFormValues();
+    const localStartTimestamp = Date.parse(start_timestamp) / 1000;
+    const localEndTimestamp = Date.parse(end_timestamp) / 1000;
+    let url = `/api/log/user_ranking?p=${startIdx}&page_size=${pageSize}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&sort_by=${sort_by}&sort_order=${sort_order}`;
+    url = encodeURI(url);
+    const res = await API.get(url);
+    const { success, message, data } = res.data;
+    if (success) {
+      const rankingItems = (data.items || []).map((item, index) => ({
+        ...item,
+        key: `${item.user_id || item.username || 'u'}-${index}`,
+        rank: (data.page - 1) * data.page_size + index + 1,
+      }));
+      setUserRanking(rankingItems);
+      setLogs([]);
+      setExpandData({});
+      setActivePage(data.page);
+      setPageSize(data.page_size);
+      setLogCount(data.total);
+    } else {
+      showError(message);
+    }
+    setLoading(false);
+  };
+
+  const loadCurrentView = async (startIdx, pageSize, customLogType = null) => {
+    const { viewMode: formViewMode } = getFormValues();
+    const currentViewMode = isAdminUser
+      ? formViewMode || VIEW_MODE.LOGS
+      : VIEW_MODE.LOGS;
+    setViewMode(currentViewMode);
+    if (isAdminUser && currentViewMode === VIEW_MODE.USER_RANKING) {
+      await loadUserRanking(startIdx, pageSize);
+      return;
+    }
+    await loadLogs(startIdx, pageSize, customLogType);
+  };
+
   // Page handlers
   const handlePageChange = (page) => {
     setActivePage(page);
-    loadLogs(page, pageSize).then((r) => {});
+    loadCurrentView(page, pageSize).then(() => {});
   };
 
   const handlePageSizeChange = async (size) => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadLogs(activePage, size)
+    loadCurrentView(1, size)
       .then()
       .catch((reason) => {
         showError(reason);
@@ -758,7 +821,7 @@ export const useLogsData = () => {
   const refresh = async () => {
     setActivePage(1);
     handleEyeClick();
-    await loadLogs(1, pageSize);
+    await loadCurrentView(1, pageSize);
   };
 
   // Copy text function
@@ -776,7 +839,7 @@ export const useLogsData = () => {
     const localPageSize =
       parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
-    loadLogs(activePage, localPageSize)
+    loadCurrentView(activePage, localPageSize)
       .then()
       .catch((reason) => {
         showError(reason);
@@ -808,8 +871,11 @@ export const useLogsData = () => {
     logCount,
     pageSize,
     logType,
+    viewMode,
+    userRanking,
     stat,
     isAdminUser,
+    VIEW_MODE,
 
     // Form state
     formApi,
@@ -857,6 +923,7 @@ export const useLogsData = () => {
     setLogsFormat,
     hasExpandableRows,
     setLogType,
+    setViewMode,
     openParamOverrideModal,
 
     // Translation

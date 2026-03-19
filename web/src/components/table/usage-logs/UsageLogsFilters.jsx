@@ -30,6 +30,9 @@ const LogsFilters = ({
   setShowColumnSelector,
   formApi,
   setLogType,
+  setViewMode,
+  viewMode,
+  VIEW_MODE,
   loading,
   isAdminUser,
   t,
@@ -104,6 +107,26 @@ const LogsFilters = ({
 
           {isAdminUser && (
             <>
+              <Form.Select
+                field='viewMode'
+                placeholder={t('视图')}
+                pure
+                size='small'
+                onChange={(value) => {
+                  setViewMode(value || VIEW_MODE.LOGS);
+                  setTimeout(() => {
+                    refresh();
+                  }, 0);
+                }}
+              >
+                <Form.Select.Option value={VIEW_MODE.LOGS}>
+                  {t('日志明细')}
+                </Form.Select.Option>
+                <Form.Select.Option value={VIEW_MODE.USER_RANKING}>
+                  {t('用户用量排行')}
+                </Form.Select.Option>
+              </Form.Select>
+
               <Form.Input
                 field='channel'
                 prefix={<IconSearch />}
@@ -120,6 +143,51 @@ const LogsFilters = ({
                 pure
                 size='small'
               />
+
+              {viewMode === VIEW_MODE.USER_RANKING && (
+                <>
+                  <Form.Select
+                    field='sort_by'
+                    placeholder={t('排序字段')}
+                    pure
+                    size='small'
+                    onChange={() => {
+                      setTimeout(() => {
+                        refresh();
+                      }, 0);
+                    }}
+                  >
+                    <Form.Select.Option value='quota'>
+                      {t('消耗额度')}
+                    </Form.Select.Option>
+                    <Form.Select.Option value='tokens'>
+                      {t('总 Tokens')}
+                    </Form.Select.Option>
+                    <Form.Select.Option value='request_count'>
+                      {t('请求数')}
+                    </Form.Select.Option>
+                  </Form.Select>
+
+                  <Form.Select
+                    field='sort_order'
+                    placeholder={t('排序方向')}
+                    pure
+                    size='small'
+                    onChange={() => {
+                      setTimeout(() => {
+                        refresh();
+                      }, 0);
+                    }}
+                  >
+                    <Form.Select.Option value='desc'>
+                      {t('降序')}
+                    </Form.Select.Option>
+                    <Form.Select.Option value='asc'>
+                      {t('升序')}
+                    </Form.Select.Option>
+                  </Form.Select>
+                </>
+              )}
             </>
           )}
         </div>
@@ -127,30 +195,32 @@ const LogsFilters = ({
         {/* 操作按钮区域 */}
         <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3'>
           {/* 日志类型选择器 */}
-          <div className='w-full sm:w-auto'>
-            <Form.Select
-              field='logType'
-              placeholder={t('日志类型')}
-              className='w-full sm:w-auto min-w-[120px]'
-              showClear
-              pure
-              onChange={() => {
-                // 延迟执行搜索，让表单值先更新
-                setTimeout(() => {
-                  refresh();
-                }, 0);
-              }}
-              size='small'
-            >
-              <Form.Select.Option value='0'>{t('全部')}</Form.Select.Option>
-              <Form.Select.Option value='1'>{t('充值')}</Form.Select.Option>
-              <Form.Select.Option value='2'>{t('消费')}</Form.Select.Option>
-              <Form.Select.Option value='3'>{t('管理')}</Form.Select.Option>
-              <Form.Select.Option value='4'>{t('系统')}</Form.Select.Option>
-              <Form.Select.Option value='5'>{t('错误')}</Form.Select.Option>
-              <Form.Select.Option value='6'>{t('退款')}</Form.Select.Option>
-            </Form.Select>
-          </div>
+          {viewMode !== VIEW_MODE.USER_RANKING && (
+            <div className='w-full sm:w-auto'>
+              <Form.Select
+                field='logType'
+                placeholder={t('日志类型')}
+                className='w-full sm:w-auto min-w-[120px]'
+                showClear
+                pure
+                onChange={() => {
+                  // 延迟执行搜索，让表单值先更新
+                  setTimeout(() => {
+                    refresh();
+                  }, 0);
+                }}
+                size='small'
+              >
+                <Form.Select.Option value='0'>{t('全部')}</Form.Select.Option>
+                <Form.Select.Option value='1'>{t('充值')}</Form.Select.Option>
+                <Form.Select.Option value='2'>{t('消费')}</Form.Select.Option>
+                <Form.Select.Option value='3'>{t('管理')}</Form.Select.Option>
+                <Form.Select.Option value='4'>{t('系统')}</Form.Select.Option>
+                <Form.Select.Option value='5'>{t('错误')}</Form.Select.Option>
+                <Form.Select.Option value='6'>{t('退款')}</Form.Select.Option>
+              </Form.Select>
+            </div>
+          )}
 
           <div className='flex gap-2 w-full sm:w-auto justify-end'>
             <Button

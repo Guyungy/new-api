@@ -29,6 +29,9 @@ import { getLogsColumns } from './UsageLogsColumnDefs';
 const LogsTable = (logsData) => {
   const {
     logs,
+    userRanking,
+    viewMode,
+    VIEW_MODE,
     expandData,
     loading,
     activePage,
@@ -88,16 +91,71 @@ const LogsTable = (logsData) => {
     return <Descriptions data={expandData[record.key]} />;
   };
 
+  const rankingColumns = useMemo(
+    () => [
+      {
+        title: t('排名'),
+        dataIndex: 'rank',
+        key: 'rank',
+        width: 80,
+        sorter: (a, b) => Number(a.rank || 0) - Number(b.rank || 0),
+      },
+      {
+        title: t('用户 ID'),
+        dataIndex: 'user_id',
+        key: 'user_id',
+        width: 100,
+        sorter: (a, b) => Number(a.user_id || 0) - Number(b.user_id || 0),
+      },
+      {
+        title: t('用户名称'),
+        dataIndex: 'username',
+        key: 'username',
+        width: 220,
+        sorter: (a, b) =>
+          String(a.username || '').localeCompare(String(b.username || '')),
+      },
+      {
+        title: t('消耗额度'),
+        dataIndex: 'quota',
+        key: 'quota',
+        width: 160,
+        sorter: (a, b) => Number(a.quota || 0) - Number(b.quota || 0),
+        render: (value) => Number(value || 0).toLocaleString(),
+      },
+      {
+        title: t('总 Tokens'),
+        dataIndex: 'tokens',
+        key: 'tokens',
+        width: 160,
+        sorter: (a, b) => Number(a.tokens || 0) - Number(b.tokens || 0),
+        render: (value) => Number(value || 0).toLocaleString(),
+      },
+      {
+        title: t('请求数'),
+        dataIndex: 'request_count',
+        key: 'request_count',
+        width: 120,
+        sorter: (a, b) =>
+          Number(a.request_count || 0) - Number(b.request_count || 0),
+        render: (value) => Number(value || 0).toLocaleString(),
+      },
+    ],
+    [t],
+  );
+
+  const isRankingView = isAdminUser && viewMode === VIEW_MODE.USER_RANKING;
+
   return (
     <CardTable
-      columns={tableColumns}
-      {...(hasExpandableRows() && {
+      columns={isRankingView ? rankingColumns : tableColumns}
+      {...(!isRankingView && hasExpandableRows() && {
         expandedRowRender: expandRowRender,
         expandRowByClick: true,
         rowExpandable: (record) =>
           expandData[record.key] && expandData[record.key].length > 0,
       })}
-      dataSource={logs}
+      dataSource={isRankingView ? userRanking : logs}
       rowKey='key'
       loading={loading}
       scroll={compactMode ? undefined : { x: 'max-content' }}
