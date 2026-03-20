@@ -116,6 +116,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	newAPIError = service.ApplyUserRequestInterception(c, request)
+	if newAPIError != nil {
+		return
+	}
+
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)

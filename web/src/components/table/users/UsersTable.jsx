@@ -32,6 +32,7 @@ import DeleteUserModal from './modals/DeleteUserModal';
 import ResetPasskeyModal from './modals/ResetPasskeyModal';
 import ResetTwoFAModal from './modals/ResetTwoFAModal';
 import UserSubscriptionsModal from './modals/UserSubscriptionsModal';
+import RequestInterceptionModal from './modals/RequestInterceptionModal';
 
 const UsersTable = (usersData) => {
   const {
@@ -63,6 +64,8 @@ const UsersTable = (usersData) => {
   const [showResetPasskeyModal, setShowResetPasskeyModal] = useState(false);
   const [showResetTwoFAModal, setShowResetTwoFAModal] = useState(false);
   const [showUserSubscriptionsModal, setShowUserSubscriptionsModal] =
+    useState(false);
+  const [showRequestInterceptionModal, setShowRequestInterceptionModal] =
     useState(false);
 
   // Modal handlers
@@ -100,6 +103,11 @@ const UsersTable = (usersData) => {
   const showUserSubscriptionsUserModal = (user) => {
     setModalUser(user);
     setShowUserSubscriptionsModal(true);
+  };
+
+  const showRequestInterceptionUserModal = (user) => {
+    setModalUser(user);
+    setShowRequestInterceptionModal(true);
   };
 
   // Modal confirm handlers
@@ -141,6 +149,7 @@ const UsersTable = (usersData) => {
       showResetPasskeyModal: showResetPasskeyUserModal,
       showResetTwoFAModal: showResetTwoFAUserModal,
       showUserSubscriptionsModal: showUserSubscriptionsUserModal,
+      showRequestInterceptionModal: showRequestInterceptionUserModal,
     });
   }, [
     t,
@@ -153,6 +162,7 @@ const UsersTable = (usersData) => {
     showResetPasskeyUserModal,
     showResetTwoFAUserModal,
     showUserSubscriptionsUserModal,
+    showRequestInterceptionUserModal,
   ]);
 
   // Handle compact mode by removing fixed positioning
@@ -259,6 +269,14 @@ const UsersTable = (usersData) => {
         user={modalUser}
         t={t}
         onSuccess={() => refresh?.()}
+      />
+
+      <RequestInterceptionModal
+        visible={showRequestInterceptionModal}
+        onCancel={() => setShowRequestInterceptionModal(false)}
+        user={modalUser}
+        onSuccess={() => refresh?.()}
+        t={t}
       />
     </>
   );

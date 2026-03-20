@@ -82,6 +82,13 @@ func (r *GeminiChatRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	}
 
 	var inputTexts []string
+	if r.SystemInstructions != nil {
+		for _, part := range r.SystemInstructions.Parts {
+			if part.Text != "" {
+				inputTexts = append(inputTexts, part.Text)
+			}
+		}
+	}
 	for _, content := range r.Contents {
 		for _, part := range content.Parts {
 			if part.Text != "" {
@@ -106,6 +113,21 @@ func (r *GeminiChatRequest) GetTokenCountMeta() *types.TokenCountMeta {
 					MimeType: mimeType,
 				})
 			}
+		}
+	}
+	for _, request := range r.Requests {
+		meta := request.GetTokenCountMeta()
+		if meta == nil {
+			continue
+		}
+		if meta.CombineText != "" {
+			inputTexts = append(inputTexts, meta.CombineText)
+		}
+		if len(meta.Files) > 0 {
+			files = append(files, meta.Files...)
+		}
+		if meta.MaxTokens > maxTokens {
+			maxTokens = meta.MaxTokens
 		}
 	}
 

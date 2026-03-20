@@ -209,6 +209,7 @@ const renderOperations = (
     showResetPasskeyModal,
     showResetTwoFAModal,
     showUserSubscriptionsModal,
+    showRequestInterceptionModal,
     t,
   },
 ) => {
@@ -234,6 +235,14 @@ const renderOperations = (
       node: 'item',
       name: t('重置 2FA'),
       onClick: () => showResetTwoFAModal(record),
+    },
+    {
+      node: 'divider',
+    },
+    {
+      node: 'item',
+      name: t('请求拦截'),
+      onClick: () => showRequestInterceptionModal(record),
     },
     {
       node: 'divider',
@@ -309,6 +318,7 @@ export const getUsersColumns = ({
   showResetPasskeyModal,
   showResetTwoFAModal,
   showUserSubscriptionsModal,
+  showRequestInterceptionModal,
 }) => {
   return [
     {
@@ -366,6 +376,7 @@ export const getUsersColumns = ({
           showResetPasskeyModal,
           showResetTwoFAModal,
           showUserSubscriptionsModal,
+          showRequestInterceptionModal,
           t,
         }),
     },

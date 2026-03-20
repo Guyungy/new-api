@@ -281,6 +281,70 @@ func GetUser(c *gin.Context) {
 	return
 }
 
+type userInterceptionUpdateRequest struct {
+	RequestInterception dto.UserRequestInterception `json:"request_interception"`
+}
+
+func GetUserRequestInterception(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	myRole := c.GetInt("role")
+	if myRole <= user.Role && myRole != common.RoleRootUser {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"request_interception": user.GetSetting().RequestInterception,
+	})
+}
+
+func UpdateUserRequestInterception(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	myRole := c.GetInt("role")
+	if myRole <= user.Role && myRole != common.RoleRootUser {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+	var req userInterceptionUpdateRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	policy := service.SanitizeUserRequestInterception(req.RequestInterception)
+	if err := service.ValidateUserRequestInterception(policy); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	setting := user.GetSetting()
+	setting.RequestInterception = policy
+	user.SetSetting(setting)
+	if err := user.Update(false); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.RecordLog(user.Id, model.LogTypeManage, fmt.Sprintf("管理员更新用户请求拦截策略：mode=%s enabled=%t", policy.Mode, policy.Enabled))
+	common.ApiSuccess(c, gin.H{
+		"request_interception": setting.RequestInterception,
+	})
+}
+
 func GenerateAccessToken(c *gin.Context) {
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, true)
