@@ -31,6 +31,136 @@ import {
 import { IconMore } from '@douyinfe/semi-icons';
 import { renderGroup, renderNumber, renderQuota } from '../../../helpers';
 
+const getRequestInterceptionPolicy = (record) => {
+  if (!record?.setting) {
+    return null;
+  }
+  try {
+    const setting =
+      typeof record.setting === 'string'
+        ? JSON.parse(record.setting)
+        : record.setting;
+    return setting?.request_interception || null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const getRequestInterceptionSummary = (policy, t) => {
+  if (!policy?.enabled) {
+    return t('未配置');
+  }
+  const parts = [];
+  const keywords = Array.isArray(policy.match_keywords)
+    ? policy.match_keywords.filter(Boolean)
+    : [];
+  if (keywords.length > 0) {
+    parts.push(`${t('关键词')} ${keywords.length}`);
+  }
+  const replaceRuleCount = String(policy.replace_rules || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean).length;
+  if (replaceRuleCount > 0) {
+    parts.push(`${t('替换')} ${replaceRuleCount}`);
+  }
+  if (policy.inject_prompt) {
+    parts.push(t('注入'));
+  }
+  if (policy.ignore_response) {
+    parts.push(t('忽视回复'));
+  }
+  return parts.length > 0 ? parts.join(' / ') : t('全部请求');
+};
+
+const renderRequestInterception = (text, record, t) => {
+  const { Paragraph, Text } = Typography;
+  const policy = getRequestInterceptionPolicy(record);
+  if (!policy?.enabled) {
+    return (
+      <Tag color='grey' shape='circle' size='small'>
+        {t('未配置')}
+      </Tag>
+    );
+  }
+
+  const mode = String(policy.mode || '').toLowerCase();
+  const modeColorMap = {
+    ignore: 'red',
+    inject: 'blue',
+    replace: 'orange',
+  };
+  const keywords = Array.isArray(policy.match_keywords)
+    ? policy.match_keywords.filter(Boolean)
+    : [];
+  const replaceRules = String(policy.replace_rules || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const summary = getRequestInterceptionSummary(policy, t);
+
+  const popoverContent = (
+    <div className='text-xs p-2' style={{ maxWidth: 320 }}>
+      <div className='mb-2'>
+        <Text strong>{t('模式')}: </Text>
+        <Tag color={modeColorMap[mode] || 'grey'} shape='circle' size='small'>
+          {mode || '-'}
+        </Tag>
+      </div>
+      <div className='mb-2'>
+        <Text strong>{t('触发关键词')}: </Text>
+        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {keywords.length > 0 ? keywords.join(', ') : t('全部请求')}
+        </div>
+      </div>
+      {policy.inject_prompt ? (
+        <div className='mb-2'>
+          <Text strong>{t('注入内容')}: </Text>
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {policy.inject_prompt}
+          </div>
+        </div>
+      ) : null}
+      {replaceRules.length > 0 ? (
+        <div className='mb-2'>
+          <Text strong>{t('替换规则')}: </Text>
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {replaceRules.join('\n')}
+          </div>
+        </div>
+      ) : null}
+      {policy.ignore_response ? (
+        <div>
+          <Text strong>{t('忽视回复')}: </Text>
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {policy.ignore_response}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <Popover content={popoverContent} position='top'>
+      <div style={{ minWidth: 140 }}>
+        <Tag color={modeColorMap[mode] || 'grey'} shape='circle' size='small'>
+          {mode || t('已启用')}
+        </Tag>
+        <Paragraph
+          type='secondary'
+          ellipsis={{
+            rows: 2,
+            showTooltip: false,
+          }}
+          style={{ margin: '4px 0 0 0', fontSize: 12, maxWidth: 180 }}
+        >
+          {summary}
+        </Paragraph>
+      </div>
+    </Popover>
+  );
+};
+
 /**
  * Render user role
  */
@@ -354,6 +484,12 @@ export const getUsersColumns = ({
       render: (text, record, index) => {
         return <div>{renderRole(text, t)}</div>;
       },
+    },
+    {
+      title: t('拦截规则'),
+      dataIndex: 'setting',
+      width: 200,
+      render: (text, record) => renderRequestInterception(text, record, t),
     },
     {
       title: t('邀请信息'),

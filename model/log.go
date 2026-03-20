@@ -497,9 +497,35 @@ func applyRequestContextKeywordFilter(tx *gorm.DB, keyword string) (*gorm.DB, er
 	if keyword == "" {
 		return tx, nil
 	}
-	keywordPattern, err := sanitizeLikePattern(keyword)
+
+	buildContainsPattern := func(value string) (string, error) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return "", nil
+		}
+		if !strings.Contains(value, "%") {
+			value = "%" + value + "%"
+		}
+		return sanitizeLikePattern(value)
+	}
+
+	keywordPattern, err := buildContainsPattern(keyword)
 	if err != nil {
 		return nil, err
+	}
+
+	jsonEscapedKeyword := keyword
+	if data, marshalErr := common.Marshal(keyword); marshalErr == nil && len(data) >= 2 {
+		jsonEscapedKeyword = string(data[1 : len(data)-1])
+	}
+	jsonPattern, err := buildContainsPattern(jsonEscapedKeyword)
+	if err != nil {
+		return nil, err
+	}
+
+	if jsonPattern != "" && jsonPattern != keywordPattern {
+		tx = tx.Where("(logs.other LIKE ? ESCAPE '!' OR logs.other LIKE ? ESCAPE '!')", keywordPattern, jsonPattern)
+		return tx, nil
 	}
 	tx = tx.Where("logs.other LIKE ? ESCAPE '!'", keywordPattern)
 	return tx, nil
