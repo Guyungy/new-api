@@ -438,7 +438,7 @@ func (channel *Channel) GetModelMapping() string {
 	return *channel.ModelMapping
 }
 
-func collectMappedModelNames(modelMapping string) map[string]bool {
+func collectMappedTargetModelNames(modelMapping string) map[string]bool {
 	hiddenModels := make(map[string]bool)
 	trimmedMapping := strings.TrimSpace(modelMapping)
 	if trimmedMapping == "" || trimmedMapping == "{}" {
@@ -452,14 +452,11 @@ func collectMappedModelNames(modelMapping string) map[string]bool {
 	}
 
 	for source, target := range parsedMapping {
-		normalizedSource := strings.TrimSpace(source)
 		normalizedTarget := strings.TrimSpace(target)
-		if normalizedSource != "" {
-			hiddenModels[normalizedSource] = true
-		}
 		if normalizedTarget != "" {
 			hiddenModels[normalizedTarget] = true
 		}
+		_ = source
 	}
 	return hiddenModels
 }
@@ -502,7 +499,7 @@ func GetHiddenMappedModelNamesByGroups(groups []string) (map[string]bool, error)
 		if row.ModelMapping == nil {
 			continue
 		}
-		for modelName := range collectMappedModelNames(*row.ModelMapping) {
+		for modelName := range collectMappedTargetModelNames(*row.ModelMapping) {
 			hiddenModels[modelName] = true
 		}
 	}
