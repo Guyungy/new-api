@@ -275,6 +275,10 @@ type RecordRequestAuditLogParams struct {
 	ResponseText        string
 	RequestPath         string
 	StatusCode          int
+	AuditID             string
+	ParentRequestID     string
+	SessionID           string
+	ConversationID      string
 }
 
 func RecordRequestInterceptionLog(c *gin.Context, userId int, params RecordRequestInterceptionLogParams) {
@@ -434,6 +438,18 @@ func RecordRequestAuditLogWithExtra(c *gin.Context, userId int, params RecordReq
 		"response_text_size":    len([]rune(strings.TrimSpace(params.ResponseText))),
 		"status_code":           params.StatusCode,
 	}
+	if params.AuditID != "" {
+		other["audit_id"] = params.AuditID
+	}
+	if params.ParentRequestID != "" {
+		other["parent_request_id"] = params.ParentRequestID
+	}
+	if params.SessionID != "" {
+		other["session_id"] = params.SessionID
+	}
+	if params.ConversationID != "" {
+		other["conversation_id"] = params.ConversationID
+	}
 	for key, value := range extra {
 		other[key] = value
 	}
@@ -498,17 +514,6 @@ func applyRequestContextKeywordFilter(tx *gorm.DB, keyword string) (*gorm.DB, er
 		return tx, nil
 	}
 
-	buildContainsPattern := func(value string) (string, error) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return "", nil
-		}
-		if !strings.Contains(value, "%") {
-			value = "%" + value + "%"
-		}
-		return sanitizeLikePattern(value)
-	}
-
 	keywordPattern, err := buildContainsPattern(keyword)
 	if err != nil {
 		return nil, err
@@ -528,6 +533,54 @@ func applyRequestContextKeywordFilter(tx *gorm.DB, keyword string) (*gorm.DB, er
 		return tx, nil
 	}
 	tx = tx.Where("logs.other LIKE ? ESCAPE '!'", keywordPattern)
+	return tx, nil
+}
+
+func buildContainsPattern(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if !strings.Contains(value, "%") {
+		value = "%" + value + "%"
+	}
+	return sanitizeLikePattern(value)
+}
+
+func buildJSONStringFieldPattern(field string, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	marshaled, err := common.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	if len(marshaled) >= 2 {
+		value = string(marshaled[1 : len(marshaled)-1])
+	}
+	return sanitizeLikePattern(fmt.Sprintf(`%%"%s":"%s"%%`, field, value))
+}
+
+func applyRequestTraceFilters(tx *gorm.DB, auditId string, sessionId string, conversationId string, parentRequestId string) (*gorm.DB, error) {
+	filters := []struct {
+		field string
+		value string
+	}{
+		{field: "audit_id", value: auditId},
+		{field: "session_id", value: sessionId},
+		{field: "conversation_id", value: conversationId},
+		{field: "parent_request_id", value: parentRequestId},
+	}
+	for _, filter := range filters {
+		pattern, err := buildJSONStringFieldPattern(filter.field, filter.value)
+		if err != nil {
+			return nil, err
+		}
+		if pattern != "" {
+			tx = tx.Where("logs.other LIKE ? ESCAPE '!'", pattern)
+		}
+	}
 	return tx, nil
 }
 
@@ -563,7 +616,7 @@ func applyLogCommonFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64
 	return tx, nil
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, interceptOnly bool, interceptMode string, interceptKeyword string, contextKeyword string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, interceptOnly bool, interceptMode string, interceptKeyword string, contextKeyword string, auditId string, sessionId string, conversationId string, parentRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -577,6 +630,10 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		return nil, 0, err
 	}
 	tx, err = applyRequestContextKeywordFilter(tx, contextKeyword)
+	if err != nil {
+		return nil, 0, err
+	}
+	tx, err = applyRequestTraceFilters(tx, auditId, sessionId, conversationId, parentRequestId)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -693,7 +750,7 @@ type RequestInterceptionStat struct {
 	Replace int64 `json:"replace"`
 }
 
-func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, interceptKeyword string, contextKeyword string) (stat RequestInterceptionStat, err error) {
+func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, interceptKeyword string, contextKeyword string, auditId string, sessionId string, conversationId string, parentRequestId string) (stat RequestInterceptionStat, err error) {
 	baseQuery := LOG_DB.Table("logs")
 	baseQuery = applyRequestInterceptionLogFilter(baseQuery, true)
 	baseQuery, err = applyRequestInterceptionKeywordFilter(baseQuery, interceptKeyword)
@@ -701,6 +758,10 @@ func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelN
 		return stat, err
 	}
 	baseQuery, err = applyRequestContextKeywordFilter(baseQuery, contextKeyword)
+	if err != nil {
+		return stat, err
+	}
+	baseQuery, err = applyRequestTraceFilters(baseQuery, auditId, sessionId, conversationId, parentRequestId)
 	if err != nil {
 		return stat, err
 	}

@@ -291,6 +291,36 @@ const LogsTable = (logsData) => {
         width: 180,
       },
       {
+        title: t('Audit ID'),
+        dataIndex: 'other',
+        key: 'audit_id',
+        width: 220,
+        render: (_, record) => getLogOther(record.other)?.audit_id || '-',
+      },
+      {
+        title: t('会话 ID'),
+        dataIndex: 'other',
+        key: 'session_id',
+        width: 220,
+        render: (_, record) => getLogOther(record.other)?.session_id || '-',
+      },
+      {
+        title: t('对话 ID'),
+        dataIndex: 'other',
+        key: 'conversation_id',
+        width: 220,
+        render: (_, record) =>
+          getLogOther(record.other)?.conversation_id || '-',
+      },
+      {
+        title: t('父请求 ID'),
+        dataIndex: 'other',
+        key: 'parent_request_id',
+        width: 220,
+        render: (_, record) =>
+          getLogOther(record.other)?.parent_request_id || '-',
+      },
+      {
         title: t('Request ID'),
         dataIndex: 'request_id',
         key: 'request_id',

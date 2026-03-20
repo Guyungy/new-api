@@ -26,7 +26,11 @@ func GetAllLogs(c *gin.Context) {
 	interceptMode := c.Query("intercept_mode")
 	interceptKeyword := c.Query("intercept_keyword")
 	contextKeyword := c.Query("context_keyword")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, interceptOnly, interceptMode, interceptKeyword, contextKeyword)
+	auditId := c.Query("audit_id")
+	sessionId := c.Query("session_id")
+	conversationId := c.Query("conversation_id")
+	parentRequestId := c.Query("parent_request_id")
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, interceptOnly, interceptMode, interceptKeyword, contextKeyword, auditId, sessionId, conversationId, parentRequestId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -187,8 +191,12 @@ func GetRequestInterceptionStat(c *gin.Context) {
 	requestId := c.Query("request_id")
 	interceptKeyword := c.Query("intercept_keyword")
 	contextKeyword := c.Query("context_keyword")
+	auditId := c.Query("audit_id")
+	sessionId := c.Query("session_id")
+	conversationId := c.Query("conversation_id")
+	parentRequestId := c.Query("parent_request_id")
 
-	stat, err := model.GetRequestInterceptionStat(startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, interceptKeyword, contextKeyword)
+	stat, err := model.GetRequestInterceptionStat(startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, interceptKeyword, contextKeyword, auditId, sessionId, conversationId, parentRequestId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

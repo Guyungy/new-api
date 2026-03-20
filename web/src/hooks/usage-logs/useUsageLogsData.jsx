@@ -119,6 +119,10 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     channel: '',
     group: '',
     request_id: '',
+    audit_id: '',
+    session_id: '',
+    conversation_id: '',
+    parent_request_id: '',
     intercept_mode: '',
     intercept_keyword: '',
     context_keyword: '',
@@ -278,6 +282,10 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       channel: formValues.channel || '',
       group: formValues.group || '',
       request_id: formValues.request_id || '',
+      audit_id: formValues.audit_id || '',
+      session_id: formValues.session_id || '',
+      conversation_id: formValues.conversation_id || '',
+      parent_request_id: formValues.parent_request_id || '',
       intercept_mode: formValues.intercept_mode || '',
       intercept_keyword: formValues.intercept_keyword || '',
       context_keyword: formValues.context_keyword || '',
@@ -305,6 +313,10 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       channel,
       group,
       request_id,
+      audit_id,
+      session_id,
+      conversation_id,
+      parent_request_id,
       intercept_mode,
       intercept_keyword,
       context_keyword,
@@ -332,6 +344,10 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       channel,
       group,
       request_id,
+      audit_id,
+      session_id,
+      conversation_id,
+      parent_request_id,
       intercept_only: currentViewMode === VIEW_MODE.INTERCEPT_DETAILS ? 1 : 0,
       intercept_mode,
       intercept_keyword,
@@ -491,6 +507,30 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
             other?.intercept_mode ||
             '-',
         });
+        if (other?.audit_id) {
+          expandDataLocal.push({
+            key: t('Audit ID'),
+            value: other.audit_id,
+          });
+        }
+        if (other?.session_id) {
+          expandDataLocal.push({
+            key: t('会话 ID'),
+            value: other.session_id,
+          });
+        }
+        if (other?.conversation_id) {
+          expandDataLocal.push({
+            key: t('对话 ID'),
+            value: other.conversation_id,
+          });
+        }
+        if (other?.parent_request_id) {
+          expandDataLocal.push({
+            key: t('父请求 ID'),
+            value: other.parent_request_id,
+          });
+        }
         expandDataLocal.push({
           key: t('命中关键词'),
           value:
@@ -875,7 +915,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     );
     let url = '';
     if (isAdminUser) {
-      url = `/api/log/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
+      url = `/api/log/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&audit_id=${params.audit_id}&session_id=${params.session_id}&conversation_id=${params.conversation_id}&parent_request_id=${params.parent_request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
     } else {
       url = `/api/log/self/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&group=${params.group}&request_id=${params.request_id}`;
     }
@@ -938,7 +978,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       return;
     }
     const params = buildLogQueryParams(VIEW_MODE.INTERCEPT_DETAILS, null, 1, 1);
-    let url = `/api/log/intercept_stat?username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
+    let url = `/api/log/intercept_stat?username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&audit_id=${params.audit_id}&session_id=${params.session_id}&conversation_id=${params.conversation_id}&parent_request_id=${params.parent_request_id}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
     url = encodeURI(url);
     const res = await API.get(url);
     const { success, message, data } = res.data;
@@ -990,7 +1030,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     const items = [];
 
     for (let page = 1; page <= totalPages; page++) {
-      let url = `/api/log/?p=${page}&page_size=${batchSize}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=1&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
+      let url = `/api/log/?p=${page}&page_size=${batchSize}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&audit_id=${params.audit_id}&session_id=${params.session_id}&conversation_id=${params.conversation_id}&parent_request_id=${params.parent_request_id}&intercept_only=1&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
       url = encodeURI(url);
       const res = await API.get(url);
       const { success, message, data } = res.data;
@@ -1018,6 +1058,10 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
         'matched_keywords',
         'model_name',
         'request_id',
+        'audit_id',
+        'session_id',
+        'conversation_id',
+        'parent_request_id',
         'response_text',
         'request_text',
       ].join(','),
@@ -1038,6 +1082,10 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
           ),
           escapeCsv(item.model_name),
           escapeCsv(item.request_id),
+          escapeCsv(other?.audit_id || ''),
+          escapeCsv(other?.session_id || ''),
+          escapeCsv(other?.conversation_id || ''),
+          escapeCsv(other?.parent_request_id || ''),
           escapeCsv(other?.response_text || ''),
           escapeCsv(other?.request_text || item.content || ''),
         ].join(','),

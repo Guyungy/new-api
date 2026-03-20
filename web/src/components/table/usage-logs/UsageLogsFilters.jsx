@@ -111,6 +111,38 @@ const LogsFilters = ({
           {isAdminUser && isInterceptView && (
             <>
               <Form.Input
+                field='audit_id'
+                prefix={<IconSearch />}
+                placeholder={t('Audit ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
+                field='session_id'
+                prefix={<IconSearch />}
+                placeholder={t('会话 ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
+                field='conversation_id'
+                prefix={<IconSearch />}
+                placeholder={t('对话 ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
+                field='parent_request_id'
+                prefix={<IconSearch />}
+                placeholder={t('父请求 ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
                 field='intercept_keyword'
                 prefix={<IconSearch />}
                 placeholder={t('拦截关键词')}

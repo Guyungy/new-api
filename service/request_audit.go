@@ -51,6 +51,13 @@ type RequestAuditCapture struct {
 	writer *requestAuditCaptureWriter
 }
 
+type requestAuditTrace struct {
+	AuditID         string
+	ParentRequestID string
+	SessionID       string
+	ConversationID  string
+}
+
 func (c *RequestAuditCapture) Bytes() []byte {
 	if c == nil || c.writer == nil {
 		return nil
@@ -145,6 +152,7 @@ func RecordRequestAuditAfterRelay(c *gin.Context, request dto.Request, relayForm
 	if relayInfo != nil && relayInfo.UsingGroup != "" {
 		group = relayInfo.UsingGroup
 	}
+	trace := buildRequestAuditTrace(request)
 
 	model.RecordRequestAuditLog(c, userId, model.RecordRequestAuditLogParams{
 		ModelName:           modelName,
@@ -159,6 +167,10 @@ func RecordRequestAuditAfterRelay(c *gin.Context, request dto.Request, relayForm
 		ResponseText:        responseText,
 		RequestPath:         requestAuditPath(c),
 		StatusCode:          statusCode,
+		AuditID:             trace.AuditID,
+		ParentRequestID:     trace.ParentRequestID,
+		SessionID:           trace.SessionID,
+		ConversationID:      trace.ConversationID,
 	})
 }
 
@@ -167,6 +179,138 @@ func requestAuditPath(c *gin.Context) string {
 		return ""
 	}
 	return c.Request.URL.Path
+}
+
+func buildRequestAuditTrace(request dto.Request) requestAuditTrace {
+	trace := requestAuditTrace{
+		AuditID: "audit_" + common.GetUUID(),
+	}
+	if request == nil {
+		return trace
+	}
+
+	switch typed := request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		mergeRequestAuditTrace(&trace, extractRequestAuditTraceFromRaw(typed.Metadata))
+	case *dto.OpenAIResponsesRequest:
+		mergeRequestAuditTrace(&trace, extractRequestAuditTraceFromRaw(typed.Metadata))
+		trace.ParentRequestID = requestAuditFirstNonEmpty(trace.ParentRequestID, typed.PreviousResponseID)
+		trace.ConversationID = requestAuditFirstNonEmpty(
+			trace.ConversationID,
+			extractRequestAuditTraceIdentifier(typed.Conversation, "conversation_id", "conversationId", "id"),
+		)
+	case *dto.OpenAIResponsesCompactionRequest:
+		trace.ParentRequestID = requestAuditFirstNonEmpty(trace.ParentRequestID, typed.PreviousResponseID)
+	case *dto.ClaudeRequest:
+		mergeRequestAuditTrace(&trace, extractRequestAuditTraceFromRaw(typed.Metadata))
+	}
+
+	return trace
+}
+
+func mergeRequestAuditTrace(target *requestAuditTrace, source requestAuditTrace) {
+	if target == nil {
+		return
+	}
+	target.AuditID = requestAuditFirstNonEmpty(target.AuditID, source.AuditID)
+	target.ParentRequestID = requestAuditFirstNonEmpty(target.ParentRequestID, source.ParentRequestID)
+	target.SessionID = requestAuditFirstNonEmpty(target.SessionID, source.SessionID)
+	target.ConversationID = requestAuditFirstNonEmpty(target.ConversationID, source.ConversationID)
+}
+
+func extractRequestAuditTraceFromRaw(raw []byte) requestAuditTrace {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return requestAuditTrace{}
+	}
+
+	var payload any
+	if err := common.Unmarshal(raw, &payload); err != nil {
+		return requestAuditTrace{}
+	}
+
+	object, ok := payload.(map[string]any)
+	if !ok {
+		return requestAuditTrace{}
+	}
+
+	return requestAuditTrace{
+		AuditID: requestAuditFirstNonEmpty(
+			extractRequestAuditTraceString(object["audit_id"]),
+			extractRequestAuditTraceString(object["auditId"]),
+		),
+		ParentRequestID: requestAuditFirstNonEmpty(
+			extractRequestAuditTraceString(object["parent_request_id"]),
+			extractRequestAuditTraceString(object["parentRequestId"]),
+			extractRequestAuditTraceString(object["previous_response_id"]),
+			extractRequestAuditTraceString(object["previousResponseId"]),
+			extractRequestAuditTraceString(object["parent_request"], "id", "request_id", "requestId"),
+			extractRequestAuditTraceString(object["parentRequest"], "id", "request_id", "requestId"),
+			extractRequestAuditTraceString(object["parent"], "id", "request_id", "requestId"),
+		),
+		SessionID: requestAuditFirstNonEmpty(
+			extractRequestAuditTraceString(object["session_id"]),
+			extractRequestAuditTraceString(object["sessionId"]),
+			extractRequestAuditTraceString(object["session"], "id", "session_id", "sessionId"),
+		),
+		ConversationID: requestAuditFirstNonEmpty(
+			extractRequestAuditTraceString(object["conversation_id"]),
+			extractRequestAuditTraceString(object["conversationId"]),
+			extractRequestAuditTraceString(object["conversation"], "id", "conversation_id", "conversationId"),
+		),
+	}
+}
+
+func extractRequestAuditTraceIdentifier(raw []byte, keys ...string) string {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return ""
+	}
+
+	var payload any
+	if err := common.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+
+	return extractRequestAuditTraceString(payload, keys...)
+}
+
+func extractRequestAuditTraceString(value any, keys ...string) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	case map[string]any:
+		for _, key := range keys {
+			if candidate := extractRequestAuditTraceString(typed[key]); candidate != "" {
+				return candidate
+			}
+		}
+		if candidate := extractRequestAuditTraceString(typed["id"]); candidate != "" {
+			return candidate
+		}
+		if candidate := extractRequestAuditTraceString(typed["value"]); candidate != "" {
+			return candidate
+		}
+	case []any:
+		for _, item := range typed {
+			if candidate := extractRequestAuditTraceString(item, keys...); candidate != "" {
+				return candidate
+			}
+		}
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, bool:
+		return strings.TrimSpace(fmt.Sprint(typed))
+	}
+	return ""
+}
+
+func requestAuditFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func extractRequestAuditResponseText(relayFormat types.RelayFormat, body []byte, isStream bool) string {
