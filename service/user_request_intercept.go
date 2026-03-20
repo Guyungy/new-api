@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -27,9 +28,12 @@ func ApplyUserRequestInterception(c *gin.Context, request dto.Request) *types.Ne
 	if !policy.Enabled || policy.Mode == "" {
 		return nil
 	}
-	if !policyMatched(policy, request) {
+	requestText := strings.TrimSpace(extractRequestText(request))
+	matched, matchedKeywords := policyMatched(policy, requestText)
+	if !matched {
 		return nil
 	}
+	recordUserRequestInterceptionLog(c, request, policy, requestText, matchedKeywords)
 
 	switch policy.Mode {
 	case dto.UserRequestInterceptModeIgnore:
@@ -107,20 +111,21 @@ func filterNonEmptyStrings(values []string) []string {
 	return filtered
 }
 
-func policyMatched(policy dto.UserRequestInterception, request dto.Request) bool {
+func policyMatched(policy dto.UserRequestInterception, requestText string) (bool, []string) {
 	if len(policy.MatchKeywords) == 0 {
-		return true
+		return true, nil
 	}
-	text := strings.ToLower(extractRequestText(request))
+	text := strings.ToLower(requestText)
 	if text == "" {
-		return false
+		return false, nil
 	}
+	matchedKeywords := make([]string, 0, len(policy.MatchKeywords))
 	for _, keyword := range policy.MatchKeywords {
 		if strings.Contains(text, strings.ToLower(keyword)) {
-			return true
+			matchedKeywords = append(matchedKeywords, keyword)
 		}
 	}
-	return false
+	return len(matchedKeywords) > 0, matchedKeywords
 }
 
 func extractRequestText(request dto.Request) string {
@@ -452,5 +457,47 @@ func applyReplaceToGeminiContent(content *dto.GeminiChatContent, rules []dto.Use
 	}
 	for i := range content.Parts {
 		content.Parts[i].Text = applyStringReplace(content.Parts[i].Text, rules)
+	}
+}
+
+func recordUserRequestInterceptionLog(c *gin.Context, request dto.Request, policy dto.UserRequestInterception, requestText string, matchedKeywords []string) {
+	if c == nil {
+		return
+	}
+	userId := c.GetInt("id")
+	if userId == 0 {
+		return
+	}
+
+	model.RecordRequestInterceptionLog(c, userId, model.RecordRequestInterceptionLogParams{
+		ModelName:       extractRequestModel(request),
+		TokenName:       c.GetString("token_name"),
+		TokenId:         c.GetInt("token_id"),
+		Group:           c.GetString("group"),
+		Mode:            policy.Mode,
+		Action:          policy.Mode,
+		MatchedKeywords: matchedKeywords,
+		RequestText:     requestText,
+		RequestPath: func() string {
+			if c.Request != nil && c.Request.URL != nil {
+				return c.Request.URL.Path
+			}
+			return ""
+		}(),
+	})
+}
+
+func extractRequestModel(request dto.Request) string {
+	switch req := request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		return req.Model
+	case *dto.OpenAIResponsesRequest:
+		return req.Model
+	case *dto.OpenAIResponsesCompactionRequest:
+		return req.Model
+	case *dto.ClaudeRequest:
+		return req.Model
+	default:
+		return ""
 	}
 }

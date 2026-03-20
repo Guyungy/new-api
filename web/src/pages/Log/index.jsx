@@ -17,13 +17,47 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState } from 'react';
+import { Tabs, TabPane } from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
 import UsageLogsTable from '../../components/table/usage-logs';
+import { isAdmin } from '../../helpers';
 
-const Token = () => (
-  <div className='mt-[60px] px-2'>
-    <UsageLogsTable />
-  </div>
-);
+const VIEW_MODE = {
+  LOGS: 'logs',
+  USER_RANKING: 'user_ranking',
+  INTERCEPT_DETAILS: 'intercept_details',
+};
+
+const Token = () => {
+  const { t } = useTranslation();
+  const isAdminUser = isAdmin();
+  const [activeTab, setActiveTab] = useState(VIEW_MODE.LOGS);
+
+  return (
+    <div className='mt-[60px] px-2'>
+      {isAdminUser && (
+        <Tabs
+          type='line'
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          className='mb-3'
+        >
+          <TabPane tab={t('日志明细')} itemKey={VIEW_MODE.LOGS} />
+          <TabPane tab={t('用户用量排行')} itemKey={VIEW_MODE.USER_RANKING} />
+          <TabPane
+            tab={t('请求拦截明细')}
+            itemKey={VIEW_MODE.INTERCEPT_DETAILS}
+          />
+        </Tabs>
+      )}
+      <UsageLogsTable
+        key={activeTab}
+        fixedViewMode={isAdminUser ? activeTab : VIEW_MODE.LOGS}
+        showViewModeSelector={false}
+      />
+    </div>
+  );
+};
 
 export default Token;

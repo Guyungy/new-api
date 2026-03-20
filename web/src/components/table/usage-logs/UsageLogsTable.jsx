@@ -18,13 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useMemo } from 'react';
-import { Empty, Descriptions } from '@douyinfe/semi-ui';
+import { Empty, Descriptions, Tag, Typography } from '@douyinfe/semi-ui';
 import CardTable from '../../common/ui/CardTable';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getLogsColumns } from './UsageLogsColumnDefs';
+import { getLogOther, renderQuota } from '../../../helpers';
+
+const INTERCEPT_MODE_COLOR = {
+  ignore: 'red',
+  inject: 'blue',
+  replace: 'orange',
+};
 
 const LogsTable = (logsData) => {
   const {
@@ -44,6 +51,8 @@ const LogsTable = (logsData) => {
     copyText,
     showUserInfoFunc,
     openChannelAffinityUsageCacheModal,
+    setInterceptUsernameQuick,
+    getFormValues,
     hasExpandableRows,
     isAdminUser,
     billingDisplayMode,
@@ -51,7 +60,6 @@ const LogsTable = (logsData) => {
     COLUMN_KEYS,
   } = logsData;
 
-  // Get all columns
   const allColumns = useMemo(() => {
     return getLogsColumns({
       t,
@@ -72,13 +80,10 @@ const LogsTable = (logsData) => {
     billingDisplayMode,
   ]);
 
-  // Filter columns based on visibility settings
-  const getVisibleColumns = () => {
-    return allColumns.filter((column) => visibleColumns[column.key]);
-  };
+  const currentInterceptUsername = getFormValues().username || '';
 
   const visibleColumnsList = useMemo(() => {
-    return getVisibleColumns();
+    return allColumns.filter((column) => visibleColumns[column.key]);
   }, [visibleColumns, allColumns]);
 
   const tableColumns = useMemo(() => {
@@ -87,7 +92,7 @@ const LogsTable = (logsData) => {
       : visibleColumnsList;
   }, [compactMode, visibleColumnsList]);
 
-  const expandRowRender = (record, index) => {
+  const expandRowRender = (record) => {
     return <Descriptions data={expandData[record.key]} />;
   };
 
@@ -108,7 +113,7 @@ const LogsTable = (logsData) => {
         sorter: (a, b) => Number(a.user_id || 0) - Number(b.user_id || 0),
       },
       {
-        title: t('用户名称'),
+        title: t('用户名'),
         dataIndex: 'username',
         key: 'username',
         width: 220,
@@ -122,6 +127,14 @@ const LogsTable = (logsData) => {
         width: 160,
         sorter: (a, b) => Number(a.quota || 0) - Number(b.quota || 0),
         render: (value) => Number(value || 0).toLocaleString(),
+      },
+      {
+        title: t('折算金额'),
+        dataIndex: 'quota',
+        key: 'amount',
+        width: 140,
+        sorter: (a, b) => Number(a.quota || 0) - Number(b.quota || 0),
+        render: (value) => renderQuota(Number(value || 0)),
       },
       {
         title: t('总 Tokens'),
@@ -144,11 +157,132 @@ const LogsTable = (logsData) => {
     [t],
   );
 
+  const interceptColumns = useMemo(
+    () => [
+      {
+        title: t('时间'),
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 180,
+        render: (_, record) => record.timestamp2string || '-',
+      },
+      ...(isAdminUser
+        ? [
+            {
+              title: t('用户名'),
+              dataIndex: 'username',
+              key: 'username',
+              width: 160,
+              render: (value) => (
+                <Tag
+                  color={currentInterceptUsername === value ? 'blue' : 'grey'}
+                  shape='circle'
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setInterceptUsernameQuick(value)}
+                >
+                  {value || '-'}
+                </Tag>
+              ),
+            },
+          ]
+        : []),
+      {
+        title: t('拦截模式'),
+        dataIndex: 'other',
+        key: 'intercept_mode',
+        width: 120,
+        render: (_, record) => {
+          const other = getLogOther(record.other);
+          const mode = String(other?.intercept_mode || '-');
+          return (
+            <Tag color={INTERCEPT_MODE_COLOR[mode] || 'grey'} shape='circle'>
+              {mode}
+            </Tag>
+          );
+        },
+      },
+      {
+        title: t('命中关键词'),
+        dataIndex: 'other',
+        key: 'matched_keywords',
+        width: 180,
+        render: (_, record) => {
+          const other = getLogOther(record.other);
+          const keywords = Array.isArray(other?.matched_keywords)
+            ? other.matched_keywords.filter(Boolean)
+            : [];
+          if (keywords.length === 0) {
+            return <span>{t('全部匹配')}</span>;
+          }
+          return (
+            <Typography.Paragraph
+              ellipsis={{
+                rows: 2,
+                showTooltip: {
+                  type: 'popover',
+                  opts: { style: { width: 240 } },
+                },
+              }}
+              style={{ maxWidth: 180, marginBottom: 0 }}
+            >
+              {keywords.join(', ')}
+            </Typography.Paragraph>
+          );
+        },
+      },
+      {
+        title: t('请求内容'),
+        dataIndex: 'other',
+        key: 'request_text',
+        width: 420,
+        render: (_, record) => {
+          const other = getLogOther(record.other);
+          const requestText = other?.request_text || record.content || '-';
+          return (
+            <Typography.Paragraph
+              ellipsis={{
+                rows: 3,
+                showTooltip: {
+                  type: 'popover',
+                  opts: { style: { width: 420 } },
+                },
+              }}
+              style={{ maxWidth: 420, marginBottom: 0, whiteSpace: 'pre-wrap' }}
+            >
+              {requestText}
+            </Typography.Paragraph>
+          );
+        },
+      },
+      {
+        title: t('模型名称'),
+        dataIndex: 'model_name',
+        key: 'model_name',
+        width: 180,
+      },
+      {
+        title: t('Request ID'),
+        dataIndex: 'request_id',
+        key: 'request_id',
+        width: 180,
+      },
+    ],
+    [currentInterceptUsername, getFormValues, isAdminUser, setInterceptUsernameQuick, t],
+  );
+
   const isRankingView = isAdminUser && viewMode === VIEW_MODE.USER_RANKING;
+  const isInterceptView =
+    isAdminUser && viewMode === VIEW_MODE.INTERCEPT_DETAILS;
 
   return (
     <CardTable
-      columns={isRankingView ? rankingColumns : tableColumns}
+      columns={
+        isRankingView
+          ? rankingColumns
+          : isInterceptView
+            ? interceptColumns
+            : tableColumns
+      }
       {...(!isRankingView && hasExpandableRows() && {
         expandedRowRender: expandRowRender,
         expandRowByClick: true,

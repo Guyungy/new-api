@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,6 +50,8 @@ const (
 	LogTypeError   = 5
 	LogTypeRefund  = 6
 )
+
+const requestInterceptionLogLikePattern = `%"intercept_log":true%`
 
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
@@ -242,16 +245,117 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string) (logs []*Log, total int64, err error) {
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = LOG_DB
-	} else {
-		tx = LOG_DB.Where("logs.type = ?", logType)
+type RecordRequestInterceptionLogParams struct {
+	ModelName       string
+	TokenName       string
+	TokenId         int
+	Group           string
+	Mode            string
+	Action          string
+	MatchedKeywords []string
+	RequestText     string
+	RequestPath     string
+}
+
+func RecordRequestInterceptionLog(c *gin.Context, userId int, params RecordRequestInterceptionLogParams) {
+	if LOG_DB == nil {
+		return
+	}
+	username := c.GetString("username")
+	requestId := c.GetString(common.RequestIdKey)
+	needRecordIp := false
+	if settingMap, err := GetUserSetting(userId, false); err == nil {
+		if settingMap.RecordIpLog {
+			needRecordIp = true
+		}
 	}
 
+	requestText := strings.TrimSpace(params.RequestText)
+	requestTextRunes := []rune(requestText)
+	if len(requestTextRunes) > 8000 {
+		requestText = string(requestTextRunes[:8000]) + "\n...[truncated]"
+	}
+	requestPreview := strings.ReplaceAll(requestText, "\n", " ")
+	requestPreviewRunes := []rune(requestPreview)
+	if len(requestPreviewRunes) > 120 {
+		requestPreview = string(requestPreviewRunes[:120]) + "..."
+	}
+
+	content := fmt.Sprintf("请求拦截（%s）", params.Mode)
+	if requestPreview != "" {
+		content = fmt.Sprintf("%s：%s", content, requestPreview)
+	}
+
+	other := map[string]interface{}{
+		"intercept_log":     true,
+		"intercept_mode":    params.Mode,
+		"intercept_action":  params.Action,
+		"matched_keywords":  params.MatchedKeywords,
+		"request_text":      requestText,
+		"request_path":      params.RequestPath,
+		"request_text_size": len([]rune(params.RequestText)),
+	}
+
+	log := &Log{
+		UserId:           userId,
+		Username:         username,
+		CreatedAt:        common.GetTimestamp(),
+		Type:             LogTypeSystem,
+		Content:          content,
+		TokenName:        params.TokenName,
+		ModelName:        params.ModelName,
+		TokenId:          params.TokenId,
+		Group:            params.Group,
+		RequestId:        requestId,
+		Ip: func() string {
+			if needRecordIp {
+				return c.ClientIP()
+			}
+			return ""
+		}(),
+		Other: common.MapToJsonStr(other),
+	}
+
+	if err := LOG_DB.Create(log).Error; err != nil {
+		logger.LogError(c, "failed to record request interception log: "+err.Error())
+	}
+}
+
+func applyRequestInterceptionLogFilter(tx *gorm.DB, interceptOnly bool) *gorm.DB {
+	if interceptOnly {
+		return tx.Where("logs.other LIKE ?", requestInterceptionLogLikePattern)
+	}
+	return tx.Where("(logs.other NOT LIKE ? OR logs.other = '' OR logs.other IS NULL)", requestInterceptionLogLikePattern)
+}
+
+func applyRequestInterceptionModeFilter(tx *gorm.DB, interceptMode string) *gorm.DB {
+	interceptMode = strings.ToLower(strings.TrimSpace(interceptMode))
+	if interceptMode == "" {
+		return tx
+	}
+	return tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"intercept_mode":"%s"%%`, interceptMode))
+}
+
+func applyRequestInterceptionKeywordFilter(tx *gorm.DB, keyword string) (*gorm.DB, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return tx, nil
+	}
+	keywordPattern, err := sanitizeLikePattern(keyword)
+	if err != nil {
+		return nil, err
+	}
+	tx = tx.Where("(logs.other LIKE ? ESCAPE '!' OR logs.content LIKE ? ESCAPE '!')", keywordPattern, keywordPattern)
+	return tx, nil
+}
+
+func applyLogCommonFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string) (*gorm.DB, error) {
 	if modelName != "" {
-		tx = tx.Where("logs.model_name like ?", modelName)
+		modelNamePattern, err := sanitizeLikePattern(modelName)
+		if err != nil {
+			return nil, err
+		}
+		tx = tx.Where("logs.model_name LIKE ? ESCAPE '!'", modelNamePattern)
 	}
 	if username != "" {
 		tx = tx.Where("logs.username = ?", username)
@@ -273,6 +377,26 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	return tx, nil
+}
+
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, interceptOnly bool, interceptMode string, interceptKeyword string) (logs []*Log, total int64, err error) {
+	var tx *gorm.DB
+	if logType == LogTypeUnknown {
+		tx = LOG_DB
+	} else {
+		tx = LOG_DB.Where("logs.type = ?", logType)
+	}
+	tx = applyRequestInterceptionLogFilter(tx, interceptOnly)
+	tx = applyRequestInterceptionModeFilter(tx, interceptMode)
+	tx, err = applyRequestInterceptionKeywordFilter(tx, interceptKeyword)
+	if err != nil {
+		return nil, 0, err
+	}
+	tx, err = applyLogCommonFilters(tx, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId)
+	if err != nil {
+		return nil, 0, err
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -328,35 +452,22 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, interceptOnly bool, interceptMode string, interceptKeyword string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
-
-	if modelName != "" {
-		modelNamePattern, err := sanitizeLikePattern(modelName)
-		if err != nil {
-			return nil, 0, err
-		}
-		tx = tx.Where("logs.model_name LIKE ? ESCAPE '!'", modelNamePattern)
+	tx = applyRequestInterceptionLogFilter(tx, interceptOnly)
+	tx = applyRequestInterceptionModeFilter(tx, interceptMode)
+	tx, err = applyRequestInterceptionKeywordFilter(tx, interceptKeyword)
+	if err != nil {
+		return nil, 0, err
 	}
-	if tokenName != "" {
-		tx = tx.Where("logs.token_name = ?", tokenName)
-	}
-	if requestId != "" {
-		tx = tx.Where("logs.request_id = ?", requestId)
-	}
-	if startTimestamp != 0 {
-		tx = tx.Where("logs.created_at >= ?", startTimestamp)
-	}
-	if endTimestamp != 0 {
-		tx = tx.Where("logs.created_at <= ?", endTimestamp)
-	}
-	if group != "" {
-		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	tx, err = applyLogCommonFilters(tx, startTimestamp, endTimestamp, modelName, "", tokenName, 0, group, requestId)
+	if err != nil {
+		return nil, 0, err
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
@@ -385,6 +496,48 @@ type UserUsageStat struct {
 	Quota       int64  `json:"quota"`
 	Tokens      int64  `json:"tokens"`
 	RequestCount int64 `json:"request_count"`
+}
+
+type RequestInterceptionStat struct {
+	Total   int64 `json:"total"`
+	Ignore  int64 `json:"ignore"`
+	Inject  int64 `json:"inject"`
+	Replace int64 `json:"replace"`
+}
+
+func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, interceptKeyword string) (stat RequestInterceptionStat, err error) {
+	baseQuery := LOG_DB.Table("logs")
+	baseQuery = applyRequestInterceptionLogFilter(baseQuery, true)
+	baseQuery, err = applyRequestInterceptionKeywordFilter(baseQuery, interceptKeyword)
+	if err != nil {
+		return stat, err
+	}
+	baseQuery, err = applyLogCommonFilters(baseQuery, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId)
+	if err != nil {
+		return stat, err
+	}
+
+	if err = baseQuery.Count(&stat.Total).Error; err != nil {
+		return stat, err
+	}
+
+	countByMode := func(mode string) (int64, error) {
+		var count int64
+		query := applyRequestInterceptionModeFilter(baseQuery.Session(&gorm.Session{}), mode)
+		err := query.Count(&count).Error
+		return count, err
+	}
+
+	if stat.Ignore, err = countByMode("ignore"); err != nil {
+		return stat, err
+	}
+	if stat.Inject, err = countByMode("inject"); err != nil {
+		return stat, err
+	}
+	if stat.Replace, err = countByMode("replace"); err != nil {
+		return stat, err
+	}
+	return stat, nil
 }
 
 func GetUserUsageRanking(startTimestamp int64, endTimestamp int64, modelName string, tokenName string, channel int, group string, username string, sortBy string, sortOrder string, startIdx int, num int) (items []*UserUsageStat, total int64, err error) {

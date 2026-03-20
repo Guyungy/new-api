@@ -29,6 +29,7 @@ import {
   timestamp2string,
   renderQuota,
   renderNumber,
+  downloadTextAsFile,
   getLogOther,
   copy,
   renderClaudeLogContent,
@@ -41,11 +42,12 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
-export const useLogsData = () => {
+export const useLogsData = ({ fixedViewMode = null } = {}) => {
   const { t } = useTranslation();
   const VIEW_MODE = {
     LOGS: 'logs',
     USER_RANKING: 'user_ranking',
+    INTERCEPT_DETAILS: 'intercept_details',
   };
 
   // Define column keys for selection
@@ -76,11 +78,19 @@ export const useLogsData = () => {
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
   const [logType, setLogType] = useState(0);
-  const [viewMode, setViewMode] = useState(VIEW_MODE.LOGS);
   const [userRanking, setUserRanking] = useState([]);
+  const [interceptStat, setInterceptStat] = useState({
+    total: 0,
+    ignore: 0,
+    inject: 0,
+    replace: 0,
+  });
 
   // User and admin
   const isAdminUser = isAdmin();
+  const resolvedViewMode =
+    isAdminUser && fixedViewMode ? fixedViewMode : VIEW_MODE.LOGS;
+  const [viewMode, setViewMode] = useState(resolvedViewMode);
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
     ? 'logs-table-columns-admin'
@@ -99,7 +109,7 @@ export const useLogsData = () => {
   const [formApi, setFormApi] = useState(null);
   let now = new Date();
   const formInitValues = {
-    viewMode: VIEW_MODE.LOGS,
+    viewMode: resolvedViewMode,
     sort_by: 'quota',
     sort_order: 'desc',
     username: '',
@@ -108,6 +118,8 @@ export const useLogsData = () => {
     channel: '',
     group: '',
     request_id: '',
+    intercept_mode: '',
+    intercept_keyword: '',
     dateRange: [
       timestamp2string(getTodayStartTimestamp()),
       timestamp2string(now.getTime() / 1000 + 3600),
@@ -264,10 +276,63 @@ export const useLogsData = () => {
       channel: formValues.channel || '',
       group: formValues.group || '',
       request_id: formValues.request_id || '',
+      intercept_mode: formValues.intercept_mode || '',
+      intercept_keyword: formValues.intercept_keyword || '',
       logType: formValues.logType ? parseInt(formValues.logType) : 0,
-      viewMode: formValues.viewMode || VIEW_MODE.LOGS,
+      viewMode: isAdminUser
+        ? fixedViewMode || formValues.viewMode || VIEW_MODE.LOGS
+        : VIEW_MODE.LOGS,
       sort_by: formValues.sort_by || 'quota',
       sort_order: formValues.sort_order || 'desc',
+    };
+  };
+
+  const buildLogQueryParams = (
+    currentViewMode,
+    customLogType = null,
+    startIdx = 1,
+    currentPageSize = pageSize,
+  ) => {
+    const {
+      username,
+      token_name,
+      model_name,
+      start_timestamp,
+      end_timestamp,
+      channel,
+      group,
+      request_id,
+      intercept_mode,
+      intercept_keyword,
+      logType: formLogType,
+      sort_by,
+      sort_order,
+    } = getFormValues();
+
+    const currentLogType =
+      customLogType !== null
+        ? customLogType
+        : formLogType !== undefined
+          ? formLogType
+          : logType;
+
+    return {
+      p: startIdx,
+      page_size: currentPageSize,
+      type: currentLogType,
+      username,
+      token_name,
+      model_name,
+      start_timestamp: Date.parse(start_timestamp) / 1000,
+      end_timestamp: Date.parse(end_timestamp) / 1000,
+      channel,
+      group,
+      request_id,
+      intercept_only: currentViewMode === VIEW_MODE.INTERCEPT_DETAILS ? 1 : 0,
+      intercept_mode,
+      intercept_keyword,
+      sort_by,
+      sort_order,
     };
   };
 
@@ -404,6 +469,49 @@ export const useLogsData = () => {
           key: t('Request ID'),
           value: logs[i].request_id,
         });
+      }
+      if (other?.intercept_log) {
+        const matchedKeywords = Array.isArray(other?.matched_keywords)
+          ? other.matched_keywords.filter(Boolean)
+          : [];
+        expandDataLocal.push({
+          key: t('拦截模式'),
+          value: other?.intercept_mode || '-',
+        });
+        expandDataLocal.push({
+          key: t('处理结果'),
+          value: other?.intercept_action || other?.intercept_mode || '-',
+        });
+        expandDataLocal.push({
+          key: t('命中关键词'),
+          value:
+            matchedKeywords.length > 0
+              ? matchedKeywords.join(', ')
+              : t('全部匹配'),
+        });
+        if (other?.request_text_size) {
+          expandDataLocal.push({
+            key: t('请求长度'),
+            value: other.request_text_size,
+          });
+        }
+        if (other?.request_text) {
+          expandDataLocal.push({
+            key: t('请求内容'),
+            value: (
+              <div
+                style={{
+                  maxWidth: 720,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
+                {other.request_text}
+              </div>
+            ),
+          });
+        }
       }
       if (other?.ws || other?.audio) {
         expandDataLocal.push({
@@ -703,35 +811,24 @@ export const useLogsData = () => {
   };
 
   // Load logs function
-  const loadLogs = async (startIdx, pageSize, customLogType = null) => {
+  const loadLogs = async (
+    startIdx,
+    pageSize,
+    customLogType = null,
+    currentViewMode = VIEW_MODE.LOGS,
+  ) => {
     setLoading(true);
-
+    const params = buildLogQueryParams(
+      currentViewMode,
+      customLogType,
+      startIdx,
+      pageSize,
+    );
     let url = '';
-    const {
-      username,
-      token_name,
-      model_name,
-      start_timestamp,
-      end_timestamp,
-      channel,
-      group,
-      request_id,
-      logType: formLogType,
-    } = getFormValues();
-
-    const currentLogType =
-      customLogType !== null
-        ? customLogType
-        : formLogType !== undefined
-          ? formLogType
-          : logType;
-
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     if (isAdminUser) {
-      url = `/api/log/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&request_id=${request_id}`;
+      url = `/api/log/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
     } else {
-      url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}`;
+      url = `/api/log/self/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
     }
     url = encodeURI(url);
     const res = await API.get(url);
@@ -787,17 +884,131 @@ export const useLogsData = () => {
     setLoading(false);
   };
 
+  const refreshInterceptStat = async () => {
+    if (!isAdminUser) {
+      return;
+    }
+    const params = buildLogQueryParams(VIEW_MODE.INTERCEPT_DETAILS, null, 1, 1);
+    let url = `/api/log/intercept_stat?username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_keyword=${params.intercept_keyword}`;
+    url = encodeURI(url);
+    const res = await API.get(url);
+    const { success, message, data } = res.data;
+    if (success) {
+      setInterceptStat({
+        total: Number(data?.total || 0),
+        ignore: Number(data?.ignore || 0),
+        inject: Number(data?.inject || 0),
+        replace: Number(data?.replace || 0),
+      });
+    } else {
+      showError(message);
+    }
+  };
+
+  const setInterceptModeQuick = async (mode = '') => {
+    if (!formApi) {
+      return;
+    }
+    formApi.setValue('intercept_mode', mode);
+    setActivePage(1);
+    await loadCurrentView(1, pageSize);
+    await refreshInterceptStat();
+  };
+
+  const setInterceptUsernameQuick = async (username = '') => {
+    if (!formApi) {
+      return;
+    }
+    formApi.setValue('username', username);
+    setActivePage(1);
+    await loadCurrentView(1, pageSize);
+    await refreshInterceptStat();
+  };
+
+  const exportInterceptCsv = async () => {
+    if (!isAdminUser) {
+      return;
+    }
+    const batchSize = 200;
+    const params = buildLogQueryParams(
+      VIEW_MODE.INTERCEPT_DETAILS,
+      null,
+      1,
+      batchSize,
+    );
+    const totalPages = Math.max(1, Math.ceil((logCount || 0) / batchSize));
+    const items = [];
+
+    for (let page = 1; page <= totalPages; page++) {
+      let url = `/api/log/?p=${page}&page_size=${batchSize}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=1&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
+      url = encodeURI(url);
+      const res = await API.get(url);
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message);
+        return;
+      }
+      items.push(...(data.items || []));
+      if ((data.items || []).length < batchSize) {
+        break;
+      }
+    }
+
+    const escapeCsv = (value) => {
+      const text = String(value ?? '');
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    const lines = [
+      [
+        'time',
+        'username',
+        'mode',
+        'matched_keywords',
+        'model_name',
+        'request_id',
+        'request_text',
+      ].join(','),
+    ];
+
+    items.forEach((item) => {
+      const other = getLogOther(item.other);
+      lines.push(
+        [
+          escapeCsv(timestamp2string(item.created_at)),
+          escapeCsv(item.username),
+          escapeCsv(other?.intercept_mode || ''),
+          escapeCsv(
+            Array.isArray(other?.matched_keywords)
+              ? other.matched_keywords.join(', ')
+              : '',
+          ),
+          escapeCsv(item.model_name),
+          escapeCsv(item.request_id),
+          escapeCsv(other?.request_text || item.content || ''),
+        ].join(','),
+      );
+    });
+
+    const date = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    downloadTextAsFile(
+      '\uFEFF' + lines.join('\n'),
+      `request-interception-${date}.csv`,
+    );
+    showSuccess(t('请求拦截明细已导出'));
+  };
+
   const loadCurrentView = async (startIdx, pageSize, customLogType = null) => {
     const { viewMode: formViewMode } = getFormValues();
     const currentViewMode = isAdminUser
-      ? formViewMode || VIEW_MODE.LOGS
+      ? fixedViewMode || formViewMode || VIEW_MODE.LOGS
       : VIEW_MODE.LOGS;
     setViewMode(currentViewMode);
     if (isAdminUser && currentViewMode === VIEW_MODE.USER_RANKING) {
       await loadUserRanking(startIdx, pageSize);
       return;
     }
-    await loadLogs(startIdx, pageSize, customLogType);
+    await loadLogs(startIdx, pageSize, customLogType, currentViewMode);
   };
 
   // Page handlers
@@ -820,8 +1031,13 @@ export const useLogsData = () => {
   // Refresh function
   const refresh = async () => {
     setActivePage(1);
-    handleEyeClick();
+    if (viewMode !== VIEW_MODE.INTERCEPT_DETAILS) {
+      handleEyeClick();
+    }
     await loadCurrentView(1, pageSize);
+    if (viewMode === VIEW_MODE.INTERCEPT_DETAILS) {
+      await refreshInterceptStat();
+    }
   };
 
   // Copy text function
@@ -840,7 +1056,11 @@ export const useLogsData = () => {
       parseInt(localStorage.getItem('page-size')) || ITEMS_PER_PAGE;
     setPageSize(localPageSize);
     loadCurrentView(activePage, localPageSize)
-      .then()
+      .then(async () => {
+        if (resolvedViewMode === VIEW_MODE.INTERCEPT_DETAILS) {
+          await refreshInterceptStat();
+        }
+      })
       .catch((reason) => {
         showError(reason);
       });
@@ -849,9 +1069,13 @@ export const useLogsData = () => {
   // Initialize statistics when formApi is available
   useEffect(() => {
     if (formApi) {
-      handleEyeClick();
+      if (viewMode !== VIEW_MODE.INTERCEPT_DETAILS) {
+        handleEyeClick();
+      } else {
+        refreshInterceptStat().then(() => {});
+      }
     }
-  }, [formApi]);
+  }, [formApi, viewMode]);
 
   // Check if any record has expandable content
   const hasExpandableRows = () => {
@@ -874,6 +1098,7 @@ export const useLogsData = () => {
     viewMode,
     userRanking,
     stat,
+    interceptStat,
     isAdminUser,
     VIEW_MODE,
 
@@ -925,6 +1150,10 @@ export const useLogsData = () => {
     setLogType,
     setViewMode,
     openParamOverrideModal,
+    setInterceptModeQuick,
+    setInterceptUsernameQuick,
+    exportInterceptCsv,
+    refreshInterceptStat,
 
     // Translation
     t,

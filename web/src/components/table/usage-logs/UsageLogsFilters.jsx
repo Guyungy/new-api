@@ -35,8 +35,13 @@ const LogsFilters = ({
   VIEW_MODE,
   loading,
   isAdminUser,
+  showViewModeSelector = true,
   t,
 }) => {
+  const isRankingView = viewMode === VIEW_MODE.USER_RANKING;
+  const isInterceptView = viewMode === VIEW_MODE.INTERCEPT_DETAILS;
+  const isLogDetailsView = viewMode === VIEW_MODE.LOGS;
+
   return (
     <Form
       initValues={formInitValues}
@@ -50,7 +55,6 @@ const LogsFilters = ({
     >
       <div className='flex flex-col gap-2'>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2'>
-          {/* 时间选择器 */}
           <div className='col-span-1 lg:col-span-2'>
             <Form.DatePicker
               field='dateRange'
@@ -68,7 +72,6 @@ const LogsFilters = ({
             />
           </div>
 
-          {/* 其他搜索字段 */}
           <Form.Input
             field='token_name'
             prefix={<IconSearch />}
@@ -105,28 +108,44 @@ const LogsFilters = ({
             size='small'
           />
 
+          {isAdminUser && isInterceptView && (
+            <Form.Input
+              field='intercept_keyword'
+              prefix={<IconSearch />}
+              placeholder={t('拦截关键词')}
+              showClear
+              pure
+              size='small'
+            />
+          )}
+
+          {isAdminUser && showViewModeSelector && (
+            <Form.Select
+              field='viewMode'
+              placeholder={t('视图')}
+              pure
+              size='small'
+              onChange={(value) => {
+                setViewMode(value || VIEW_MODE.LOGS);
+                setTimeout(() => {
+                  refresh();
+                }, 0);
+              }}
+            >
+              <Form.Select.Option value={VIEW_MODE.LOGS}>
+                {t('日志明细')}
+              </Form.Select.Option>
+              <Form.Select.Option value={VIEW_MODE.USER_RANKING}>
+                {t('用户用量排行')}
+              </Form.Select.Option>
+              <Form.Select.Option value={VIEW_MODE.INTERCEPT_DETAILS}>
+                {t('请求拦截明细')}
+              </Form.Select.Option>
+            </Form.Select>
+          )}
+
           {isAdminUser && (
             <>
-              <Form.Select
-                field='viewMode'
-                placeholder={t('视图')}
-                pure
-                size='small'
-                onChange={(value) => {
-                  setViewMode(value || VIEW_MODE.LOGS);
-                  setTimeout(() => {
-                    refresh();
-                  }, 0);
-                }}
-              >
-                <Form.Select.Option value={VIEW_MODE.LOGS}>
-                  {t('日志明细')}
-                </Form.Select.Option>
-                <Form.Select.Option value={VIEW_MODE.USER_RANKING}>
-                  {t('用户用量排行')}
-                </Form.Select.Option>
-              </Form.Select>
-
               <Form.Input
                 field='channel'
                 prefix={<IconSearch />}
@@ -138,64 +157,62 @@ const LogsFilters = ({
               <Form.Input
                 field='username'
                 prefix={<IconSearch />}
-                placeholder={t('用户名称')}
+                placeholder={t('用户名')}
                 showClear
                 pure
                 size='small'
               />
+            </>
+          )}
 
-              {viewMode === VIEW_MODE.USER_RANKING && (
-                <>
-                  <Form.Select
-                    field='sort_by'
-                    placeholder={t('排序字段')}
-                    pure
-                    size='small'
-                    onChange={() => {
-                      setTimeout(() => {
-                        refresh();
-                      }, 0);
-                    }}
-                  >
-                    <Form.Select.Option value='quota'>
-                      {t('消耗额度')}
-                    </Form.Select.Option>
-                    <Form.Select.Option value='tokens'>
-                      {t('总 Tokens')}
-                    </Form.Select.Option>
-                    <Form.Select.Option value='request_count'>
-                      {t('请求数')}
-                    </Form.Select.Option>
-                  </Form.Select>
+          {isAdminUser && isRankingView && (
+            <>
+              <Form.Select
+                field='sort_by'
+                placeholder={t('排序字段')}
+                pure
+                size='small'
+                onChange={() => {
+                  setTimeout(() => {
+                    refresh();
+                  }, 0);
+                }}
+              >
+                <Form.Select.Option value='quota'>
+                  {t('消耗额度')}
+                </Form.Select.Option>
+                <Form.Select.Option value='tokens'>
+                  {t('总 Tokens')}
+                </Form.Select.Option>
+                <Form.Select.Option value='request_count'>
+                  {t('请求数')}
+                </Form.Select.Option>
+              </Form.Select>
 
-                  <Form.Select
-                    field='sort_order'
-                    placeholder={t('排序方向')}
-                    pure
-                    size='small'
-                    onChange={() => {
-                      setTimeout(() => {
-                        refresh();
-                      }, 0);
-                    }}
-                  >
-                    <Form.Select.Option value='desc'>
-                      {t('降序')}
-                    </Form.Select.Option>
-                    <Form.Select.Option value='asc'>
-                      {t('升序')}
-                    </Form.Select.Option>
-                  </Form.Select>
-                </>
-              )}
+              <Form.Select
+                field='sort_order'
+                placeholder={t('排序方向')}
+                pure
+                size='small'
+                onChange={() => {
+                  setTimeout(() => {
+                    refresh();
+                  }, 0);
+                }}
+              >
+                <Form.Select.Option value='desc'>
+                  {t('降序')}
+                </Form.Select.Option>
+                <Form.Select.Option value='asc'>
+                  {t('升序')}
+                </Form.Select.Option>
+              </Form.Select>
             </>
           )}
         </div>
 
-        {/* 操作按钮区域 */}
         <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3'>
-          {/* 日志类型选择器 */}
-          {viewMode !== VIEW_MODE.USER_RANKING && (
+          {isLogDetailsView && (
             <div className='w-full sm:w-auto'>
               <Form.Select
                 field='logType'
@@ -204,7 +221,6 @@ const LogsFilters = ({
                 showClear
                 pure
                 onChange={() => {
-                  // 延迟执行搜索，让表单值先更新
                   setTimeout(() => {
                     refresh();
                   }, 0);
@@ -246,13 +262,20 @@ const LogsFilters = ({
             >
               {t('重置')}
             </Button>
-            <Button
-              type='tertiary'
-              onClick={() => setShowColumnSelector(true)}
-              size='small'
-            >
-              {t('列设置')}
-            </Button>
+            {isLogDetailsView && (
+              <Button
+                type='tertiary'
+                onClick={() => setShowColumnSelector(true)}
+                size='small'
+              >
+                {t('列设置')}
+              </Button>
+            )}
+            {isInterceptView && (
+              <Button type='tertiary' disabled size='small'>
+                {t('已按请求拦截日志过滤')}
+              </Button>
+            )}
           </div>
         </div>
       </div>
