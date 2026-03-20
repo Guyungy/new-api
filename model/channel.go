@@ -438,6 +438,77 @@ func (channel *Channel) GetModelMapping() string {
 	return *channel.ModelMapping
 }
 
+func collectMappedModelNames(modelMapping string) map[string]bool {
+	hiddenModels := make(map[string]bool)
+	trimmedMapping := strings.TrimSpace(modelMapping)
+	if trimmedMapping == "" || trimmedMapping == "{}" {
+		return hiddenModels
+	}
+
+	parsedMapping := make(map[string]string)
+	if err := common.UnmarshalJsonStr(trimmedMapping, &parsedMapping); err != nil {
+		common.SysLog(fmt.Sprintf("failed to parse channel model mapping when collecting hidden models: %v", err))
+		return hiddenModels
+	}
+
+	for source, target := range parsedMapping {
+		normalizedSource := strings.TrimSpace(source)
+		normalizedTarget := strings.TrimSpace(target)
+		if normalizedSource != "" {
+			hiddenModels[normalizedSource] = true
+		}
+		if normalizedTarget != "" {
+			hiddenModels[normalizedTarget] = true
+		}
+	}
+	return hiddenModels
+}
+
+func GetHiddenMappedModelNamesByGroups(groups []string) (map[string]bool, error) {
+	normalizedGroups := make([]string, 0, len(groups))
+	seenGroups := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		if _, exists := seenGroups[trimmedGroup]; exists {
+			continue
+		}
+		seenGroups[trimmedGroup] = struct{}{}
+		normalizedGroups = append(normalizedGroups, trimmedGroup)
+	}
+	if len(normalizedGroups) == 0 {
+		return map[string]bool{}, nil
+	}
+
+	type channelMappingRow struct {
+		Id           int
+		ModelMapping *string
+	}
+
+	var rows []channelMappingRow
+	err := DB.Table("channels").
+		Select("distinct channels.id, channels.model_mapping").
+		Joins("join abilities on abilities.channel_id = channels.id").
+		Where("channels.status = ? and abilities.enabled = ? and "+commonGroupCol+" in ?", common.ChannelStatusEnabled, true, normalizedGroups).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	hiddenModels := make(map[string]bool)
+	for _, row := range rows {
+		if row.ModelMapping == nil {
+			continue
+		}
+		for modelName := range collectMappedModelNames(*row.ModelMapping) {
+			hiddenModels[modelName] = true
+		}
+	}
+	return hiddenModels, nil
+}
+
 func (channel *Channel) GetStatusCodeMapping() string {
 	if channel.StatusCodeMapping == nil {
 		return ""

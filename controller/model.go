@@ -109,8 +109,52 @@ func init() {
 	})
 }
 
+func getVisibleModelGroups(c *gin.Context) ([]string, error) {
+	userId := c.GetInt("id")
+	userGroup, err := model.GetUserGroup(userId, false)
+	if err != nil {
+		return nil, err
+	}
+
+	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
+	if tokenGroup == "auto" {
+		return service.GetUserAutoGroup(userGroup), nil
+	}
+	if tokenGroup != "" {
+		return []string{tokenGroup}, nil
+	}
+	return []string{userGroup}, nil
+}
+
+func getHiddenMappedModelsForRequest(c *gin.Context) map[string]bool {
+	groups, err := getVisibleModelGroups(c)
+	if err != nil {
+		return map[string]bool{}
+	}
+
+	hiddenModels, err := model.GetHiddenMappedModelNamesByGroups(groups)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to load hidden mapped models: %v", err))
+		return map[string]bool{}
+	}
+	return hiddenModels
+}
+
+func buildModelNotFoundResponse(modelId string) gin.H {
+	openAIError := types.OpenAIError{
+		Message: fmt.Sprintf("The model '%s' does not exist", modelId),
+		Type:    "invalid_request_error",
+		Param:   "model",
+		Code:    "model_not_found",
+	}
+	return gin.H{
+		"error": openAIError,
+	}
+}
+
 func ListModels(c *gin.Context, modelType int) {
 	userOpenAiModels := make([]dto.OpenAIModels, 0)
+	hiddenModels := getHiddenMappedModelsForRequest(c)
 
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
@@ -133,6 +177,9 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 		for allowModel, _ := range tokenModelLimit {
+			if hiddenModels[allowModel] {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				_, _, exist := ratio_setting.GetModelRatioOrPrice(allowModel)
 				if !exist {
@@ -153,8 +200,7 @@ func ListModels(c *gin.Context, modelType int) {
 			}
 		}
 	} else {
-		userId := c.GetInt("id")
-		userGroup, err := model.GetUserGroup(userId, false)
+		groups, err := getVisibleModelGroups(c)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -162,25 +208,19 @@ func ListModels(c *gin.Context, modelType int) {
 			})
 			return
 		}
-		group := userGroup
-		tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
-		if tokenGroup != "" {
-			group = tokenGroup
-		}
 		var models []string
-		if tokenGroup == "auto" {
-			for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
-				groupModels := model.GetGroupEnabledModels(autoGroup)
-				for _, g := range groupModels {
-					if !common.StringsContains(models, g) {
-						models = append(models, g)
-					}
+		for _, group := range groups {
+			groupModels := model.GetGroupEnabledModels(group)
+			for _, g := range groupModels {
+				if !common.StringsContains(models, g) {
+					models = append(models, g)
 				}
 			}
-		} else {
-			models = model.GetGroupEnabledModels(group)
 		}
 		for _, modelName := range models {
+			if hiddenModels[modelName] {
+				continue
+			}
 			if !acceptUnsetRatioModel {
 				_, _, exist := ratio_setting.GetModelRatioOrPrice(modelName)
 				if !exist {
@@ -263,6 +303,11 @@ func EnabledListModels(c *gin.Context) {
 
 func RetrieveModel(c *gin.Context, modelType int) {
 	modelId := c.Param("model")
+	hiddenModels := getHiddenMappedModelsForRequest(c)
+	if hiddenModels[modelId] {
+		c.JSON(200, buildModelNotFoundResponse(modelId))
+		return
+	}
 	if aiModel, ok := openAIModelsMap[modelId]; ok {
 		switch modelType {
 		case constant.ChannelTypeAnthropic:
@@ -276,14 +321,6 @@ func RetrieveModel(c *gin.Context, modelType int) {
 			c.JSON(200, aiModel)
 		}
 	} else {
-		openAIError := types.OpenAIError{
-			Message: fmt.Sprintf("The model '%s' does not exist", modelId),
-			Type:    "invalid_request_error",
-			Param:   "model",
-			Code:    "model_not_found",
-		}
-		c.JSON(200, gin.H{
-			"error": openAIError,
-		})
+		c.JSON(200, buildModelNotFoundResponse(modelId))
 	}
 }
