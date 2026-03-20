@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -52,6 +53,7 @@ const (
 )
 
 const requestInterceptionLogLikePattern = `%"intercept_log":true%`
+const requestAuditLogLikePattern = `%"request_audit_log":true%`
 
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
@@ -246,18 +248,55 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 }
 
 type RecordRequestInterceptionLogParams struct {
-	ModelName       string
-	TokenName       string
-	TokenId         int
-	Group           string
-	Mode            string
-	Action          string
-	MatchedKeywords []string
-	RequestText     string
-	RequestPath     string
+	ModelName           string
+	TokenName           string
+	TokenId             int
+	Group               string
+	Mode                string
+	Action              string
+	MatchedKeywords     []string
+	OriginalRequestText string
+	FinalRequestText    string
+	ResponseText        string
+	RequestText         string
+	RequestPath         string
+}
+
+type RecordRequestAuditLogParams struct {
+	ModelName           string
+	TokenName           string
+	TokenId             int
+	Group               string
+	Mode                string
+	Status              string
+	MatchedKeywords     []string
+	OriginalRequestText string
+	FinalRequestText    string
+	ResponseText        string
+	RequestPath         string
+	StatusCode          int
 }
 
 func RecordRequestInterceptionLog(c *gin.Context, userId int, params RecordRequestInterceptionLogParams) {
+	RecordRequestAuditLogWithExtra(c, userId, RecordRequestAuditLogParams{
+		ModelName:           params.ModelName,
+		TokenName:           params.TokenName,
+		TokenId:             params.TokenId,
+		Group:               params.Group,
+		Mode:                params.Mode,
+		Status:              "blocked",
+		MatchedKeywords:     params.MatchedKeywords,
+		OriginalRequestText: params.OriginalRequestText,
+		FinalRequestText:    firstNonEmpty(params.FinalRequestText, params.RequestText),
+		ResponseText:        params.ResponseText,
+		RequestPath:         params.RequestPath,
+		StatusCode:          http.StatusForbidden,
+	}, map[string]interface{}{
+		"intercept_log":    true,
+		"intercept_mode":   params.Mode,
+		"intercept_action": params.Action,
+	})
+	return
 	if LOG_DB == nil {
 		return
 	}
@@ -297,16 +336,16 @@ func RecordRequestInterceptionLog(c *gin.Context, userId int, params RecordReque
 	}
 
 	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        common.GetTimestamp(),
-		Type:             LogTypeSystem,
-		Content:          content,
-		TokenName:        params.TokenName,
-		ModelName:        params.ModelName,
-		TokenId:          params.TokenId,
-		Group:            params.Group,
-		RequestId:        requestId,
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeSystem,
+		Content:   content,
+		TokenName: params.TokenName,
+		ModelName: params.ModelName,
+		TokenId:   params.TokenId,
+		Group:     params.Group,
+		RequestId: requestId,
 		Ip: func() string {
 			if needRecordIp {
 				return c.ClientIP()
@@ -321,11 +360,115 @@ func RecordRequestInterceptionLog(c *gin.Context, userId int, params RecordReque
 	}
 }
 
+func truncateLogText(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	textRunes := []rune(text)
+	if len(textRunes) > limit {
+		return string(textRunes[:limit]) + "\n...[truncated]"
+	}
+	return text
+}
+
+func buildLogPreview(text string) string {
+	text = strings.ReplaceAll(strings.TrimSpace(text), "\n", " ")
+	if text == "" {
+		return ""
+	}
+	textRunes := []rune(text)
+	if len(textRunes) > 120 {
+		return string(textRunes[:120]) + "..."
+	}
+	return text
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func RecordRequestAuditLog(c *gin.Context, userId int, params RecordRequestAuditLogParams) {
+	RecordRequestAuditLogWithExtra(c, userId, params, nil)
+}
+
+func RecordRequestAuditLogWithExtra(c *gin.Context, userId int, params RecordRequestAuditLogParams, extra map[string]interface{}) {
+	if LOG_DB == nil {
+		return
+	}
+	username := c.GetString("username")
+	requestId := c.GetString(common.RequestIdKey)
+	needRecordIp := false
+	if settingMap, err := GetUserSetting(userId, false); err == nil {
+		if settingMap.RecordIpLog {
+			needRecordIp = true
+		}
+	}
+
+	requestText := truncateLogText(params.FinalRequestText, 20000)
+	originalRequestText := truncateLogText(params.OriginalRequestText, 20000)
+	responseText := truncateLogText(params.ResponseText, 20000)
+	requestPreview := buildLogPreview(firstNonEmpty(requestText, originalRequestText))
+
+	content := fmt.Sprintf("请求明细（%s）", firstNonEmpty(params.Mode, "normal"))
+	if requestPreview != "" {
+		content = fmt.Sprintf("%s：%s", content, requestPreview)
+	}
+
+	other := map[string]interface{}{
+		"request_audit_log":     true,
+		"request_audit_mode":    firstNonEmpty(params.Mode, "normal"),
+		"request_audit_status":  firstNonEmpty(params.Status, "completed"),
+		"matched_keywords":      params.MatchedKeywords,
+		"original_request_text": originalRequestText,
+		"request_text":          requestText,
+		"response_text":         responseText,
+		"request_path":          params.RequestPath,
+		"request_text_size":     len([]rune(strings.TrimSpace(params.FinalRequestText))),
+		"response_text_size":    len([]rune(strings.TrimSpace(params.ResponseText))),
+		"status_code":           params.StatusCode,
+	}
+	for key, value := range extra {
+		other[key] = value
+	}
+
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeSystem,
+		Content:   content,
+		TokenName: params.TokenName,
+		ModelName: params.ModelName,
+		TokenId:   params.TokenId,
+		Group:     params.Group,
+		RequestId: requestId,
+		Ip: func() string {
+			if needRecordIp {
+				return c.ClientIP()
+			}
+			return ""
+		}(),
+		Other: common.MapToJsonStr(other),
+	}
+
+	if err := LOG_DB.Create(log).Error; err != nil {
+		logger.LogError(c, "failed to record request audit log: "+err.Error())
+	}
+}
+
 func applyRequestInterceptionLogFilter(tx *gorm.DB, interceptOnly bool) *gorm.DB {
 	if interceptOnly {
-		return tx.Where("logs.other LIKE ?", requestInterceptionLogLikePattern)
+		return tx.Where("(logs.other LIKE ? OR logs.other LIKE ?)", requestAuditLogLikePattern, requestInterceptionLogLikePattern)
 	}
-	return tx.Where("(logs.other NOT LIKE ? OR logs.other = '' OR logs.other IS NULL)", requestInterceptionLogLikePattern)
+	return tx.Where("(logs.other NOT LIKE ? OR logs.other = '' OR logs.other IS NULL)", requestAuditLogLikePattern).
+		Where("(logs.other NOT LIKE ? OR logs.other = '' OR logs.other IS NULL)", requestInterceptionLogLikePattern)
 }
 
 func applyRequestInterceptionModeFilter(tx *gorm.DB, interceptMode string) *gorm.DB {
@@ -333,7 +476,7 @@ func applyRequestInterceptionModeFilter(tx *gorm.DB, interceptMode string) *gorm
 	if interceptMode == "" {
 		return tx
 	}
-	return tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"intercept_mode":"%s"%%`, interceptMode))
+	return tx.Where("(logs.other LIKE ? OR logs.other LIKE ?)", fmt.Sprintf(`%%"request_audit_mode":"%s"%%`, interceptMode), fmt.Sprintf(`%%"intercept_mode":"%s"%%`, interceptMode))
 }
 
 func applyRequestInterceptionKeywordFilter(tx *gorm.DB, keyword string) (*gorm.DB, error) {
@@ -491,15 +634,16 @@ type Stat struct {
 }
 
 type UserUsageStat struct {
-	UserId      int    `json:"user_id"`
-	Username    string `json:"username"`
-	Quota       int64  `json:"quota"`
-	Tokens      int64  `json:"tokens"`
-	RequestCount int64 `json:"request_count"`
+	UserId       int    `json:"user_id"`
+	Username     string `json:"username"`
+	Quota        int64  `json:"quota"`
+	Tokens       int64  `json:"tokens"`
+	RequestCount int64  `json:"request_count"`
 }
 
 type RequestInterceptionStat struct {
 	Total   int64 `json:"total"`
+	Normal  int64 `json:"normal"`
 	Ignore  int64 `json:"ignore"`
 	Inject  int64 `json:"inject"`
 	Replace int64 `json:"replace"`
@@ -528,6 +672,9 @@ func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelN
 		return count, err
 	}
 
+	if stat.Normal, err = countByMode("normal"); err != nil {
+		return stat, err
+	}
 	if stat.Ignore, err = countByMode("ignore"); err != nil {
 		return stat, err
 	}

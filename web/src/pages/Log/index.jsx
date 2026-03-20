@@ -46,7 +46,7 @@ const Token = () => {
           <TabPane tab={t('日志明细')} itemKey={VIEW_MODE.LOGS} />
           <TabPane tab={t('用户用量排行')} itemKey={VIEW_MODE.USER_RANKING} />
           <TabPane
-            tab={t('请求拦截明细')}
+            tab={t('请求明细')}
             itemKey={VIEW_MODE.INTERCEPT_DETAILS}
           />
         </Tabs>

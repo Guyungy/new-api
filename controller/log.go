@@ -46,10 +46,8 @@ func GetUserLogs(c *gin.Context) {
 	modelName := c.Query("model_name")
 	group := c.Query("group")
 	requestId := c.Query("request_id")
-	interceptOnly := parseBoolQuery(c.Query("intercept_only"))
-	interceptMode := c.Query("intercept_mode")
-	interceptKeyword := c.Query("intercept_keyword")
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, interceptOnly, interceptMode, interceptKeyword)
+	// Request audit and interception logs are admin-only and must never be exposed on self log APIs.
+	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, false, "", "")
 	if err != nil {
 		common.ApiError(c, err)
 		return

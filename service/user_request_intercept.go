@@ -33,7 +33,9 @@ func ApplyUserRequestInterception(c *gin.Context, request dto.Request) *types.Ne
 	if !matched {
 		return nil
 	}
-	recordUserRequestInterceptionLog(c, request, policy, requestText, matchedKeywords)
+	common.SetContextKey(c, constant.ContextKeyRequestAuditMode, policy.Mode)
+	common.SetContextKey(c, constant.ContextKeyRequestAuditMatchedKeywords, matchedKeywords)
+	common.SetContextKey(c, constant.ContextKeyRequestAuditOriginalText, requestText)
 
 	switch policy.Mode {
 	case dto.UserRequestInterceptModeIgnore:
@@ -41,6 +43,7 @@ func ApplyUserRequestInterception(c *gin.Context, request dto.Request) *types.Ne
 		if message == "" {
 			message = "request blocked by user interception policy"
 		}
+		recordUserRequestInterceptionLog(c, request, policy, requestText, matchedKeywords, message)
 		common.SetContextKey(c, constant.ContextKeyAdminRejectReason, "user_request_interception=ignore")
 		return types.NewErrorWithStatusCode(
 			errors.New(message),
@@ -460,7 +463,7 @@ func applyReplaceToGeminiContent(content *dto.GeminiChatContent, rules []dto.Use
 	}
 }
 
-func recordUserRequestInterceptionLog(c *gin.Context, request dto.Request, policy dto.UserRequestInterception, requestText string, matchedKeywords []string) {
+func recordUserRequestInterceptionLog(c *gin.Context, request dto.Request, policy dto.UserRequestInterception, requestText string, matchedKeywords []string, responseText string) {
 	if c == nil {
 		return
 	}
@@ -470,14 +473,17 @@ func recordUserRequestInterceptionLog(c *gin.Context, request dto.Request, polic
 	}
 
 	model.RecordRequestInterceptionLog(c, userId, model.RecordRequestInterceptionLogParams{
-		ModelName:       extractRequestModel(request),
-		TokenName:       c.GetString("token_name"),
-		TokenId:         c.GetInt("token_id"),
-		Group:           c.GetString("group"),
-		Mode:            policy.Mode,
-		Action:          policy.Mode,
-		MatchedKeywords: matchedKeywords,
-		RequestText:     requestText,
+		ModelName:           extractRequestModel(request),
+		TokenName:           c.GetString("token_name"),
+		TokenId:             c.GetInt("token_id"),
+		Group:               c.GetString("group"),
+		Mode:                policy.Mode,
+		Action:              policy.Mode,
+		MatchedKeywords:     matchedKeywords,
+		OriginalRequestText: requestText,
+		FinalRequestText:    requestText,
+		ResponseText:        responseText,
+		RequestText:         requestText,
 		RequestPath: func() string {
 			if c.Request != nil && c.Request.URL != nil {
 				return c.Request.URL.Path
@@ -497,6 +503,8 @@ func extractRequestModel(request dto.Request) string {
 		return req.Model
 	case *dto.ClaudeRequest:
 		return req.Model
+	case *dto.GeminiChatRequest:
+		return ""
 	default:
 		return ""
 	}

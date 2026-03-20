@@ -81,6 +81,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
   const [userRanking, setUserRanking] = useState([]);
   const [interceptStat, setInterceptStat] = useState({
     total: 0,
+    normal: 0,
     ignore: 0,
     inject: 0,
     replace: 0,
@@ -470,17 +471,21 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
           value: logs[i].request_id,
         });
       }
-      if (other?.intercept_log) {
+      if (other?.request_audit_log || other?.intercept_log) {
         const matchedKeywords = Array.isArray(other?.matched_keywords)
           ? other.matched_keywords.filter(Boolean)
           : [];
         expandDataLocal.push({
           key: t('拦截模式'),
-          value: other?.intercept_mode || '-',
+          value: other?.request_audit_mode || other?.intercept_mode || '-',
         });
         expandDataLocal.push({
           key: t('处理结果'),
-          value: other?.intercept_action || other?.intercept_mode || '-',
+          value:
+            other?.request_audit_status ||
+            other?.intercept_action ||
+            other?.intercept_mode ||
+            '-',
         });
         expandDataLocal.push({
           key: t('命中关键词'),
@@ -508,6 +513,46 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
                 }}
               >
                 {other.request_text}
+              </div>
+            ),
+          });
+        }
+        if (other?.original_request_text) {
+          expandDataLocal.push({
+            key: t('原始请求'),
+            value: (
+              <div
+                style={{
+                  maxWidth: 720,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
+                {other.original_request_text}
+              </div>
+            ),
+          });
+        }
+        if (other?.response_text_size) {
+          expandDataLocal.push({
+            key: t('回复长度'),
+            value: other.response_text_size,
+          });
+        }
+        if (other?.response_text) {
+          expandDataLocal.push({
+            key: t('模型回复'),
+            value: (
+              <div
+                style={{
+                  maxWidth: 720,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
+                {other.response_text}
               </div>
             ),
           });
@@ -828,7 +873,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     if (isAdminUser) {
       url = `/api/log/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
     } else {
-      url = `/api/log/self/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
+      url = `/api/log/self/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&group=${params.group}&request_id=${params.request_id}`;
     }
     url = encodeURI(url);
     const res = await API.get(url);
@@ -896,6 +941,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     if (success) {
       setInterceptStat({
         total: Number(data?.total || 0),
+        normal: Number(data?.normal || 0),
         ignore: Number(data?.ignore || 0),
         inject: Number(data?.inject || 0),
         replace: Number(data?.replace || 0),
@@ -964,9 +1010,11 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
         'time',
         'username',
         'mode',
+        'status',
         'matched_keywords',
         'model_name',
         'request_id',
+        'response_text',
         'request_text',
       ].join(','),
     ];
@@ -977,7 +1025,8 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
         [
           escapeCsv(timestamp2string(item.created_at)),
           escapeCsv(item.username),
-          escapeCsv(other?.intercept_mode || ''),
+          escapeCsv(other?.request_audit_mode || other?.intercept_mode || ''),
+          escapeCsv(other?.request_audit_status || ''),
           escapeCsv(
             Array.isArray(other?.matched_keywords)
               ? other.matched_keywords.join(', ')
@@ -985,6 +1034,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
           ),
           escapeCsv(item.model_name),
           escapeCsv(item.request_id),
+          escapeCsv(other?.response_text || ''),
           escapeCsv(other?.request_text || item.content || ''),
         ].join(','),
       );
@@ -993,9 +1043,9 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     const date = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     downloadTextAsFile(
       '\uFEFF' + lines.join('\n'),
-      `request-interception-${date}.csv`,
+      `request-details-${date}.csv`,
     );
-    showSuccess(t('请求拦截明细已导出'));
+    showSuccess(t('请求明细已导出'));
   };
 
   const loadCurrentView = async (startIdx, pageSize, customLogType = null) => {

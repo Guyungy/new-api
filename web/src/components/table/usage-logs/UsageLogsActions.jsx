@@ -64,6 +64,12 @@ const LogsActions = ({
                 color: 'grey',
               },
               {
+                key: 'normal',
+                label: t('正常'),
+                value: interceptStat.normal,
+                color: 'green',
+              },
+              {
                 key: 'ignore',
                 label: 'ignore',
                 value: interceptStat.ignore,

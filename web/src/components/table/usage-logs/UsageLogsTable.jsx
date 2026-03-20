@@ -28,6 +28,7 @@ import { getLogsColumns } from './UsageLogsColumnDefs';
 import { getLogOther, renderQuota } from '../../../helpers';
 
 const INTERCEPT_MODE_COLOR = {
+  normal: 'green',
   ignore: 'red',
   inject: 'blue',
   replace: 'orange',
@@ -187,13 +188,15 @@ const LogsTable = (logsData) => {
           ]
         : []),
       {
-        title: t('拦截模式'),
+        title: t('请求模式'),
         dataIndex: 'other',
         key: 'intercept_mode',
         width: 120,
         render: (_, record) => {
           const other = getLogOther(record.other);
-          const mode = String(other?.intercept_mode || '-');
+          const mode = String(
+            other?.request_audit_mode || other?.intercept_mode || '-',
+          );
           return (
             <Tag color={INTERCEPT_MODE_COLOR[mode] || 'grey'} shape='circle'>
               {mode}
@@ -208,11 +211,14 @@ const LogsTable = (logsData) => {
         width: 180,
         render: (_, record) => {
           const other = getLogOther(record.other);
+          const mode = String(
+            other?.request_audit_mode || other?.intercept_mode || '',
+          );
           const keywords = Array.isArray(other?.matched_keywords)
             ? other.matched_keywords.filter(Boolean)
             : [];
           if (keywords.length === 0) {
-            return <span>{t('全部匹配')}</span>;
+            return <span>{mode === 'normal' ? '-' : t('全部匹配')}</span>;
           }
           return (
             <Typography.Paragraph
@@ -231,7 +237,7 @@ const LogsTable = (logsData) => {
         },
       },
       {
-        title: t('请求内容'),
+        title: t('模型上下文'),
         dataIndex: 'other',
         key: 'request_text',
         width: 420,
@@ -250,6 +256,30 @@ const LogsTable = (logsData) => {
               style={{ maxWidth: 420, marginBottom: 0, whiteSpace: 'pre-wrap' }}
             >
               {requestText}
+            </Typography.Paragraph>
+          );
+        },
+      },
+      {
+        title: t('模型回复'),
+        dataIndex: 'other',
+        key: 'response_text',
+        width: 420,
+        render: (_, record) => {
+          const other = getLogOther(record.other);
+          const responseText = other?.response_text || '-';
+          return (
+            <Typography.Paragraph
+              ellipsis={{
+                rows: 3,
+                showTooltip: {
+                  type: 'popover',
+                  opts: { style: { width: 420 } },
+                },
+              }}
+              style={{ maxWidth: 420, marginBottom: 0, whiteSpace: 'pre-wrap' }}
+            >
+              {responseText}
             </Typography.Paragraph>
           );
         },

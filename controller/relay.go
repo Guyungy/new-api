@@ -71,8 +71,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
 	var (
-		newAPIError *types.NewAPIError
-		ws          *websocket.Conn
+		newAPIError  *types.NewAPIError
+		ws           *websocket.Conn
+		relayInfo    *relaycommon.RelayInfo
+		auditCapture *service.RequestAuditCapture
 	)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
@@ -121,7 +123,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	if service.ShouldRecordRequestAudit(request, relayFormat) {
+		auditCapture = service.InstallRequestAuditCapture(c)
+		defer service.RecordRequestAuditAfterRelay(c, request, relayFormat, relayInfo, auditCapture, newAPIError)
+	}
+
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
