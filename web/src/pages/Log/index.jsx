@@ -25,7 +25,6 @@ import { isAdmin } from '../../helpers';
 
 const VIEW_MODE = {
   LOGS: 'logs',
-  USER_RANKING: 'user_ranking',
   INTERCEPT_DETAILS: 'intercept_details',
 };
 
@@ -44,11 +43,7 @@ const Token = () => {
           className='mb-3'
         >
           <TabPane tab={t('日志明细')} itemKey={VIEW_MODE.LOGS} />
-          <TabPane tab={t('用户用量排行')} itemKey={VIEW_MODE.USER_RANKING} />
-          <TabPane
-            tab={t('请求明细')}
-            itemKey={VIEW_MODE.INTERCEPT_DETAILS}
-          />
+          <TabPane tab={t('请求明细')} itemKey={VIEW_MODE.INTERCEPT_DETAILS} />
         </Tabs>
       )}
       <UsageLogsTable

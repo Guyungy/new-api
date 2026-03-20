@@ -17,13 +17,51 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState } from 'react';
+import { Tabs, TabPane } from '@douyinfe/semi-ui';
+import { useTranslation } from 'react-i18next';
 import UsersTable from '../../components/table/users';
+import UsageLogsTable from '../../components/table/usage-logs';
+import { isAdmin } from '../../helpers';
+
+const VIEW_MODE = {
+  USERS: 'users',
+  USER_RANKING: 'user_ranking',
+};
 
 const User = () => {
+  const { t } = useTranslation();
+  const isAdminUser = isAdmin();
+  const [activeTab, setActiveTab] = useState(VIEW_MODE.USERS);
+
+  if (!isAdminUser) {
+    return (
+      <div className='mt-[60px] px-2'>
+        <UsersTable />
+      </div>
+    );
+  }
+
   return (
     <div className='mt-[60px] px-2'>
-      <UsersTable />
+      <Tabs
+        type='line'
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        className='mb-3'
+      >
+        <TabPane tab={t('用户列表')} itemKey={VIEW_MODE.USERS} />
+        <TabPane tab={t('用户额度排行')} itemKey={VIEW_MODE.USER_RANKING} />
+      </Tabs>
+      {activeTab === VIEW_MODE.USERS ? (
+        <UsersTable />
+      ) : (
+        <UsageLogsTable
+          key={VIEW_MODE.USER_RANKING}
+          fixedViewMode={VIEW_MODE.USER_RANKING}
+          showViewModeSelector={false}
+        />
+      )}
     </div>
   );
 };
