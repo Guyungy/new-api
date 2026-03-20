@@ -492,6 +492,19 @@ func applyRequestInterceptionKeywordFilter(tx *gorm.DB, keyword string) (*gorm.D
 	return tx, nil
 }
 
+func applyRequestContextKeywordFilter(tx *gorm.DB, keyword string) (*gorm.DB, error) {
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return tx, nil
+	}
+	keywordPattern, err := sanitizeLikePattern(keyword)
+	if err != nil {
+		return nil, err
+	}
+	tx = tx.Where("logs.other LIKE ? ESCAPE '!'", keywordPattern)
+	return tx, nil
+}
+
 func applyLogCommonFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string) (*gorm.DB, error) {
 	if modelName != "" {
 		modelNamePattern, err := sanitizeLikePattern(modelName)
@@ -524,7 +537,7 @@ func applyLogCommonFilters(tx *gorm.DB, startTimestamp int64, endTimestamp int64
 	return tx, nil
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, interceptOnly bool, interceptMode string, interceptKeyword string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, interceptOnly bool, interceptMode string, interceptKeyword string, contextKeyword string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -534,6 +547,10 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	tx = applyRequestInterceptionLogFilter(tx, interceptOnly)
 	tx = applyRequestInterceptionModeFilter(tx, interceptMode)
 	tx, err = applyRequestInterceptionKeywordFilter(tx, interceptKeyword)
+	if err != nil {
+		return nil, 0, err
+	}
+	tx, err = applyRequestContextKeywordFilter(tx, contextKeyword)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -602,6 +619,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
+	tx = tx.Where("logs.type <> ?", LogTypeManage)
 	tx = applyRequestInterceptionLogFilter(tx, interceptOnly)
 	tx = applyRequestInterceptionModeFilter(tx, interceptMode)
 	tx, err = applyRequestInterceptionKeywordFilter(tx, interceptKeyword)
@@ -649,10 +667,14 @@ type RequestInterceptionStat struct {
 	Replace int64 `json:"replace"`
 }
 
-func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, interceptKeyword string) (stat RequestInterceptionStat, err error) {
+func GetRequestInterceptionStat(startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, requestId string, interceptKeyword string, contextKeyword string) (stat RequestInterceptionStat, err error) {
 	baseQuery := LOG_DB.Table("logs")
 	baseQuery = applyRequestInterceptionLogFilter(baseQuery, true)
 	baseQuery, err = applyRequestInterceptionKeywordFilter(baseQuery, interceptKeyword)
+	if err != nil {
+		return stat, err
+	}
+	baseQuery, err = applyRequestContextKeywordFilter(baseQuery, contextKeyword)
 	if err != nil {
 		return stat, err
 	}

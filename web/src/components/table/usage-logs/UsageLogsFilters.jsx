@@ -109,14 +109,24 @@ const LogsFilters = ({
           />
 
           {isAdminUser && isInterceptView && (
-            <Form.Input
-              field='intercept_keyword'
-              prefix={<IconSearch />}
-              placeholder={t('拦截关键词')}
-              showClear
-              pure
-              size='small'
-            />
+            <>
+              <Form.Input
+                field='intercept_keyword'
+                prefix={<IconSearch />}
+                placeholder={t('拦截关键词')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
+                field='context_keyword'
+                prefix={<IconSearch />}
+                placeholder={t('搜索上下文')}
+                showClear
+                pure
+                size='small'
+              />
+            </>
           )}
 
           {isAdminUser && showViewModeSelector && (
@@ -139,7 +149,7 @@ const LogsFilters = ({
                 {t('用户用量排行')}
               </Form.Select.Option>
               <Form.Select.Option value={VIEW_MODE.INTERCEPT_DETAILS}>
-                {t('请求拦截明细')}
+                {t('请求明细')}
               </Form.Select.Option>
             </Form.Select>
           )}

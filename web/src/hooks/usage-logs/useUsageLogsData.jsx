@@ -121,6 +121,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     request_id: '',
     intercept_mode: '',
     intercept_keyword: '',
+    context_keyword: '',
     dateRange: [
       timestamp2string(getTodayStartTimestamp()),
       timestamp2string(now.getTime() / 1000 + 3600),
@@ -279,6 +280,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       request_id: formValues.request_id || '',
       intercept_mode: formValues.intercept_mode || '',
       intercept_keyword: formValues.intercept_keyword || '',
+      context_keyword: formValues.context_keyword || '',
       logType: formValues.logType ? parseInt(formValues.logType) : 0,
       viewMode: isAdminUser
         ? fixedViewMode || formValues.viewMode || VIEW_MODE.LOGS
@@ -305,6 +307,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       request_id,
       intercept_mode,
       intercept_keyword,
+      context_keyword,
       logType: formLogType,
       sort_by,
       sort_order,
@@ -332,6 +335,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       intercept_only: currentViewMode === VIEW_MODE.INTERCEPT_DETAILS ? 1 : 0,
       intercept_mode,
       intercept_keyword,
+      context_keyword,
       sort_by,
       sort_order,
     };
@@ -871,7 +875,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     );
     let url = '';
     if (isAdminUser) {
-      url = `/api/log/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
+      url = `/api/log/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=${params.intercept_only}&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
     } else {
       url = `/api/log/self/?p=${params.p}&page_size=${params.page_size}&type=${params.type}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&group=${params.group}&request_id=${params.request_id}`;
     }
@@ -934,7 +938,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
       return;
     }
     const params = buildLogQueryParams(VIEW_MODE.INTERCEPT_DETAILS, null, 1, 1);
-    let url = `/api/log/intercept_stat?username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_keyword=${params.intercept_keyword}`;
+    let url = `/api/log/intercept_stat?username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
     url = encodeURI(url);
     const res = await API.get(url);
     const { success, message, data } = res.data;
@@ -986,7 +990,7 @@ export const useLogsData = ({ fixedViewMode = null } = {}) => {
     const items = [];
 
     for (let page = 1; page <= totalPages; page++) {
-      let url = `/api/log/?p=${page}&page_size=${batchSize}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=1&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}`;
+      let url = `/api/log/?p=${page}&page_size=${batchSize}&type=${params.type}&username=${params.username}&token_name=${params.token_name}&model_name=${params.model_name}&start_timestamp=${params.start_timestamp}&end_timestamp=${params.end_timestamp}&channel=${params.channel}&group=${params.group}&request_id=${params.request_id}&intercept_only=1&intercept_mode=${params.intercept_mode}&intercept_keyword=${params.intercept_keyword}&context_keyword=${params.context_keyword}`;
       url = encodeURI(url);
       const res = await API.get(url);
       const { success, message, data } = res.data;

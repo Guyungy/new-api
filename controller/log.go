@@ -25,7 +25,8 @@ func GetAllLogs(c *gin.Context) {
 	interceptOnly := parseBoolQuery(c.Query("intercept_only"))
 	interceptMode := c.Query("intercept_mode")
 	interceptKeyword := c.Query("intercept_keyword")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, interceptOnly, interceptMode, interceptKeyword)
+	contextKeyword := c.Query("context_keyword")
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, interceptOnly, interceptMode, interceptKeyword, contextKeyword)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -185,8 +186,9 @@ func GetRequestInterceptionStat(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	interceptKeyword := c.Query("intercept_keyword")
+	contextKeyword := c.Query("context_keyword")
 
-	stat, err := model.GetRequestInterceptionStat(startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, interceptKeyword)
+	stat, err := model.GetRequestInterceptionStat(startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, requestId, interceptKeyword, contextKeyword)
 	if err != nil {
 		common.ApiError(c, err)
 		return

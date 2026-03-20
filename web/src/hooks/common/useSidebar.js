@@ -51,6 +51,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     deployment: true,
     redemption: true,
     user: true,
+    request_detail: true,
     subscription: true,
     setting: true,
   },

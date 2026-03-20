@@ -21,19 +21,19 @@ import React from 'react';
 import UsageLogsTable from '../../components/table/usage-logs';
 
 const VIEW_MODE = {
-  LOGS: 'logs',
+  INTERCEPT_DETAILS: 'intercept_details',
 };
 
-const Log = () => {
+const RequestDetail = () => {
   return (
     <div className='mt-[60px] px-2'>
       <UsageLogsTable
-        key={VIEW_MODE.LOGS}
-        fixedViewMode={VIEW_MODE.LOGS}
+        key={VIEW_MODE.INTERCEPT_DETAILS}
+        fixedViewMode={VIEW_MODE.INTERCEPT_DETAILS}
         showViewModeSelector={false}
       />
     </div>
   );
 };
 
-export default Log;
+export default RequestDetail;
